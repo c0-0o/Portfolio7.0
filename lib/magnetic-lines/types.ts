@@ -35,10 +35,13 @@ export interface CustomPath {
   points: PathPoint[];
   /** Source viewport ratio for generated shapes that must retain their proportions. */
   aspectRatio?: number;
+  closedJoint?: "connected" | "breakable";
 }
 
 export interface ShapeConfig {
   type: ShapeType;
+  /** Whether runtime motion and interaction may bend this shape's contour. */
+  bendable?: boolean;
   amplitude: number;
   frequency: number;
   cycles: number;
@@ -51,6 +54,7 @@ export interface ShapeConfig {
 }
 
 export interface MotionConfig {
+  enabled?: boolean;
   type: MotionType;
   /** Cycles-per-second style multiplier. */
   speed: number;
@@ -92,6 +96,7 @@ export interface AnchorPoint {
   type: AnchorPointType;
   enabled: boolean;
   speed: number;
+  delay: number;
   order: number;
   loop: boolean;
   behavior: "loop" | "one-time";
@@ -130,33 +135,38 @@ export interface LineColorStyle {
 
 export interface OcclusionConfig {
   enabled: boolean;
+  /** Extra pixel clearance around higher layers, beyond both stroke widths. */
+  gapWidth: number;
 }
 
 export interface MagnetConfig {
   targetId: string | null;
   enabled: boolean;
-  /** 0..1 ? how strongly this line responds to an active target. */
+  /** 0..100 ? how strongly this line responds to an active target. */
   strength: number;
-  /** Normalized influence distance (fraction of min viewport dimension). */
+  /** Normalized influence distance (fraction of min viewport dimension), up to 100. */
   radius: number;
-  /** 0..1 ? falloff sharpness (0 = gentle/linear-ish, 1 = sharp near the edge). */
+  /** 0..100 ? falloff sharpness (0 = gentle/linear-ish, 100 = sharp near the edge). */
   falloff: number;
-  /** Normalized maximum displacement allowed (fraction of min viewport dimension). */
+  /** Normalized maximum displacement allowed (fraction of min viewport dimension), up to 100. */
   maxDeformation: number;
 }
 
 export interface GlowConfig {
   enabled: boolean;
   color: string;
-  intensity: number; // 0..1
-  /** Normalized distance from the target perimeter at which glow begins. */
+  colorStyle?: LineColorStyle;
+  intensity: number; // 0..100
+  opacity: number; // 0..100
+  /** Normalized proximity radius for this glow source. */
   radius: number;
-  /** 0..1 ? fraction of the line's length affected around the closest point. */
+  /** 0..100 fraction of the line's length affected around the strongest sample. */
   length: number;
-  falloff: number; // 0..1
+  falloff: number; // 0..100
 }
 
-export type CursorInfluenceMode = "attract";
+export type CursorInfluenceMode = "attract" | "repel";
+export type CursorInfluenceProfile = "soft" | "balanced" | "focused";
 export type LineInteractionMode = "avoid";
 export type ConstraintBoundary = "none" | "viewport";
 
@@ -167,9 +177,17 @@ export interface ConstraintConfig {
   padding: number;
 }
 
+export interface GravityConfig {
+  enabled: boolean;
+  strength: number;
+  fixedPointIds: string[];
+}
+
 export interface LineInteractionConfig {
   enabled: boolean;
   strength: number;
+  /** Distance before the visible strokes should touch, as a fraction of viewport min dimension. */
+  clearance: number;
   radius: number;
   falloff: number;
   mode: LineInteractionMode;
@@ -181,12 +199,13 @@ export interface CursorInfluenceConfig {
   radius: number;
   falloff: number;
   maxDeformation: number;
+  profile: CursorInfluenceProfile;
+  smoothing: number;
   mode: CursorInfluenceMode;
 }
 
 export interface CursorGlowConfig {
-  /** Whether THIS line participates in the ambient cursor glow at all. Defaults OFF at the
-   * per-line "cursor deformation" level ? this only ever produces glow, never bending. */
+  /** Whether this line participates in the pointer portion of the shared inner glow. */
   enabled: boolean;
   color?: string;
   intensity?: number;
@@ -194,21 +213,108 @@ export interface CursorGlowConfig {
   falloff?: number;
 }
 
-export type TextureType = "grain" | "fiber";
-export type TextureFlowDirection = "forward" | "reverse";
-
-export interface TextureFlowConfig {
-  enabled: boolean;
-  speed: number;
-  direction: TextureFlowDirection;
-  offset: number;
-}
+export type TextureType = "grain" | "fiber" | "silk" | "rope" | "beads" | "metal";
 
 export interface TextureConfig {
   enabled: boolean;
   type: TextureType;
   scale: number;
   intensity: number;
+  showThread: boolean;
+  weight: number;
+  silkStrands: number;
+}
+
+export type FlowEffectType = "electric-current" | "continuous-light" | "plasma" | "fiber-optic" | "energy-pulse";
+export type FlowDirection = "forward" | "reverse" | "both" | "alternating";
+export type FlowPlacement = "inside" | "along" | "around" | "outside" | "mixed";
+
+export interface FlowLayerConfig {
+  current: boolean;
+  core: boolean;
+  secondary: boolean;
+  glow: boolean;
+  branches: boolean;
+  sparks: boolean;
+}
+
+export interface FlowConfig {
+  enabled: boolean;
+  effectType: FlowEffectType;
+  preset: string | null;
+  speed: number;
+  colorSpeed: number;
+  direction: FlowDirection;
+  intensity: number;
+  width: number;
+  coreWidth: number;
+  glowWidth: number;
+  opacity: number;
+  colors: string[];
+  coreColor: string;
+  glowColor: string;
+  streamCount: number;
+  phase: number;
+  placement: FlowPlacement;
+  layers: FlowLayerConfig;
+  branchFrequency: number;
+  branchLength: number;
+  sparkDensity: number;
+  flicker: number;
+  turbulence: number;
+  strandCount: number;
+  pulseWidth: number;
+  tailLength: number;
+}
+
+export type AirflowBehavior = "steady" | "gentle" | "gusty" | "storm" | "random";
+
+export interface EnvironmentLightConfig {
+  id: string;
+  color: string;
+  position: Point;
+  endPosition: Point;
+  intensity: number;
+  radius: number;
+  speed: number;
+  playback: "loop" | "once";
+}
+
+export interface EnvironmentConfig {
+  enabled: boolean;
+  airflowEnabled: boolean;
+  airflowBehavior: AirflowBehavior;
+  airflowPath: Point[];
+  airflowPaths?: Point[][];
+  airflowRadii?: number[];
+  airflowSpeed: number;
+  airflowStrength: number;
+  airflowRadius: number;
+  lightEnabled: boolean;
+  lightColor: string;
+  lightPosition: Point;
+  lightIntensity: number;
+  lightRadius: number;
+  lights?: EnvironmentLightConfig[];
+}
+
+export type EnvironmentMode = "off" | "global" | "individual";
+
+export interface LineEnvironmentConfig {
+  airflowMode: EnvironmentMode;
+  airflowBehavior: AirflowBehavior;
+  airflowPath: Point[];
+  airflowPaths: Point[][];
+  airflowRadii: number[];
+  airflowSpeed: number;
+  airflowStrength: number;
+  airflowRadius: number;
+  lightMode: EnvironmentMode;
+  lightColor: string;
+  lightPosition: Point;
+  lightIntensity: number;
+  lightRadius: number;
+  lights: EnvironmentLightConfig[];
 }
 
 export interface LineInheritance {
@@ -220,7 +326,7 @@ export interface LineInheritance {
   glow: boolean;
   outerGlow: boolean;
   texture: boolean;
-  textureFlow: boolean;
+  flow: boolean;
   cursorInfluence: boolean;
   lineInteraction: boolean;
   constraint: boolean;
@@ -249,10 +355,13 @@ export interface MagneticLineConfig {
   outerGlow: GlowConfig;
   cursorGlow: CursorGlowConfig;
   texture: TextureConfig;
-  textureFlow: TextureFlowConfig;
+  flow: FlowConfig;
+  environmentEnabled: boolean;
+  environment: LineEnvironmentConfig;
   cursorInfluence: CursorInfluenceConfig;
   lineInteraction: LineInteractionConfig;
   constraint: ConstraintConfig;
+  gravity: GravityConfig;
   occlusion: OcclusionConfig;
 }
 
@@ -271,6 +380,7 @@ export interface GlobalSettings {
   colorStyle?: LineColorStyle;
   opacity: number;
   width: number;
+  motionEnabled: boolean;
   motionType: MotionType;
   speed: number;
   amplitude: number;
@@ -288,16 +398,20 @@ export interface GlobalSettings {
 
   glowEnabled: boolean;
   glowColor: string;
+  glowColorStyle?: LineColorStyle;
   glowIntensity: number;
+  glowOpacity: number;
   glowRadius: number;
   glowLength: number;
   glowFalloff: number;
-  /** Hard clamp applied to (target glow + ambient glow) combined, per sample point. */
+  /** 0..100 hard clamp applied to the combined inner and outer glow per sample. */
   glowMaxCombinedIntensity: number;
 
   outerGlowEnabled: boolean;
   outerGlowColor: string;
+  outerGlowColorStyle?: LineColorStyle;
   outerGlowIntensity: number;
+  outerGlowOpacity: number;
   outerGlowRadius: number;
   outerGlowLength: number;
   outerGlowFalloff: number;
@@ -306,7 +420,11 @@ export interface GlobalSettings {
   textureType: TextureType;
   textureScale: number;
   textureIntensity: number;
-  textureFlow: TextureFlowConfig;
+  textureShowThread: boolean;
+  textureWeight: number;
+  textureSilkStrands: number;
+  flow: FlowConfig;
+  environment: EnvironmentConfig;
   cursorInfluence: CursorInfluenceConfig;
   lineInteraction: LineInteractionConfig;
   constraint: ConstraintConfig;
@@ -337,6 +455,16 @@ export interface CursorInteractionSettings {
 
 export interface MagneticTargetConfig {
   id: string;
+  name?: string;
+  tagName?: string;
+  /** Unique CSS selector for targets picked from a page preview. */
+  selector?: string;
+  /** Missing means the target applies to all lines for backward compatibility. */
+  lineIds?: string[] | null;
+  /** Per-line effect triggers; omitted effects inherit the target's activations. */
+  lineTriggers?: Record<string, TargetLineTriggers>;
+  activations?: TargetActivation[];
+  clickBehavior?: TargetClickBehavior;
   enabled: boolean;
   magnetic: boolean;
   /** Multiplier applied on top of each line's own magnet.strength. */
@@ -346,6 +474,14 @@ export interface MagneticTargetConfig {
   /** Higher wins when multiple targets are simultaneously active. */
   priority: number;
   glow?: Partial<GlowConfig>;
+}
+
+export type TargetActivation = "hover" | "focus" | "click" | "touch";
+export type TargetClickBehavior = "press" | "toggle";
+
+export interface TargetLineTriggers {
+  magnet?: TargetActivation[];
+  glow?: TargetActivation[];
 }
 
 export interface MagneticLinesSceneConfig {

@@ -30,10 +30,53 @@ Swap `DEFAULT_SCENE` for whatever you export from the editor (see below).
 The component renders `position: fixed; inset: 0; pointer-events: none`,
 so it never blocks clicks, scrolling, or text selection.
 
+`PersistentMagneticBackground` can be mounted once in the root layout to make
+the renderer available on every route. An optional route scene overrides that
+route's built-in default. Selecting a page in the visual editor loads the same
+route scene shown on the live page, including its built-in default when no
+override exists. Edits are saved automatically to the selected route; **Use
+page default** removes that route's override.
+Built-in routes and routes visited in this browser appear in the dropdown;
+saved overrides remain listed until removed. Like the editor's existing
+Save & Test workflow, route assignments are saved in the current browser's
+local storage.
+Visited routes are collected automatically in the editor's page dropdown.
+**Preview page** shows the selected route inside the editor with the current
+in-progress scene, without navigating away or requiring the scene to be saved.
+
 ## Registering magnetic targets
 
-Only elements you explicitly wrap participate — nothing else in the DOM is
-scanned or made magnetic.
+You can add targets without changing page code: open the editor's **Targets**
+panel, choose **Pick page element**, and click an element in the live preview.
+The editor saves a unique selector with the page scene and binds that element
+when the page is rendered. If page markup changes and a selector stops matching
+exactly one element, re-pick it from the preview. The editor keeps the page
+visible while you edit, highlights the selected target in place, and shows a
+small element preview in the target list (hover it to enlarge it).
+
+Each saved target can activate on hover, keyboard focus, click, and/or touch.
+Click can stay active while pressed or toggle on/off. Assign a target to all
+lines or choose individual lines. Expand a line's separate **Magnet** and
+**Glow** controls to edit that line's existing effect settings and choose its
+own triggers; effects inherit the target's default triggers until customized.
+A line can be assigned to one specific target at a time; the target panel
+reflects both its line list and the line's target setting, and moving a line to
+another target clears its old explicit assignment.
+Use **None** to clear the selected target's scope; its lines become available
+for other targets that include them. The target's hover, focus, click, and touch
+settings provide defaults; each line's **Magnet** and **Glow** dropdowns can
+edit that effect and override its triggers independently. Disabled effects are
+identified in the target line list. Use **Open full line settings** for the
+complete editor for that line. Target-level strength, radius, and priority
+remain shared by assigned lines. New targets respond on all lines by default.
+Page content remains above the background; the target editor can reorder
+background lines, and the same order controls which lines occlude one another
+at crossings.
+Pausing the editor preview freezes motion without replacing path geometry with
+its straight-line fallback.
+
+The code API is still available for elements that need a stable, explicit
+identifier or custom registration:
 
 ```tsx
 import { MagneticTarget } from "@/lib/magnetic-lines";
@@ -87,10 +130,11 @@ export default function Page() {
 }
 ```
 
-Register your real page's magnetic targets somewhere the editor route also
-mounts (or temporarily render your hero inside the editor page) so the
-Targets panel shows them and you can tune per-target strength/radius/priority
-against the real geometry.
+Targets picked from the live preview are saved with that page's scene and do
+not require editor-route wrappers. Existing `MagneticTarget` / `useMagneticTarget`
+registrations remain available for code-defined targets. Open **Preview page**
+to validate saved selectors against the actual route; missing or ambiguous
+selectors are reported in the Targets panel and can be re-picked there.
 
 The editor autosaves its working config to `localStorage` (so a refresh
 doesn't lose your work) and exposes **Export → Copy / Download** to get a
@@ -112,11 +156,86 @@ clean `MagneticLinesSceneConfig` JSON you paste into your production code
 - Ambient cursor glow, fully separate from magnetic deformation: it only
   ever brightens nearby lines, never bends them, and is computed via cheap
   broad-phase distance checks.
+- Optional per-line surface texture with filtered film grain, directional
+  fibers, adjustable lightweight silk filaments, braided rope plies, rounded
+  necklace beads, or polished interlocking metal links. Bead threads can be shown or hidden.
+  Material weight affects cursor, airflow, and gravity response: silk sags less,
+  while rope, beads, and metal carry more weight. Silk filaments use irregular,
+  lightly overlapping spacing and share a smoothed airflow bend instead of
+  wobbling independently. Merging path points across separate strokes now
+  joins those strokes; selected points can also be explicitly connected or
+  kept as separate strokes. Closed custom paths keep their seam connected by
+  default, with an option to let airflow separate it. Flow and energy overlays
+  and silk filaments use cyclic tangents at closed seams to prevent visible
+  kinks.
+- Optional scene environment with smoothly sampled airflow paths, adjustable
+speed, strength, and radius. Narrow airflow radii make localized bends, while
+wider radii spread the wind across more of a line. Colored lights have draggable travel
+  endpoints, adjustable intensity, radius, speed, and loop/once playback.
+  Global settings and individual lines can each have several airflow paths and
+  light sources. Each airflow path has its own radius and a translucent
+  on-canvas corridor shows its influence. Lines are opted in individually;
+  each line can use the shared airflow and lights, configure either effect
+  independently, or turn it off.
+  Environment guides and light handles appear in the editor only while the
+  Environment section is open. Random airflow drifts smoothly through longer,
+  irregular-duration calm, breeze, and gust periods rather than switching on a
+  fixed turn-by-turn schedule.
+  Global and individual settings share the existing animation loop and spring
+  easing.
+- Optional Flow & Energy overlays follow each line's live, multi-stroke geometry
+  in that same animation loop, in both the editor and production renderer. The
+  initial set includes electric current, continuous light, plasma, fiber optic,
+  and energy pulse effects, with global defaults, per-line overrides, editable
+  movement/appearance/layers, and 15 bundled presets. Flow settings are
+  backward-compatible with older saved scenes and do not alter the line's
+  material texture. On silk, effects follow each filament at a matching
+  thread-scale width; on rope, they follow the braid plies. Paper, beads, and
+  metal keep their distinct surface detailing while energy travels at a
+  material-matched width along the line or supporting thread.
+- Optional line-to-line interaction treats other visible lines as soft
+  obstacles. Enabled lines begin bending within the influence radius and
+  maintain a configurable gap between their visible stroke edges; disabled
+  lines remain obstacles but do not move in response. The solver checks
+  segment geometry (not just sampled vertices), combines nearby obstacle
+  forces, and smooths each stroke independently to reduce abrupt bends;
+  separate shape strokes never influence one another as self-obstacles.
+- Per-line gravity can be enabled independently, tuned by strength, and pinned
+  at either endpoint or any editable shape vertex, including vertices on
+  multi-stroke presets such as cubes. Unpinned sections fall toward the
+  viewport bottom; a line with no pins settles along the bottom edge. Gravity
+  is disabled by default.
+- Generated and custom shapes can be marked non-bendable in the shape controls.
+  Rigid contours ignore shape motion, endpoint/path anchors, gravity, magnetism,
+  airflow, cursor influence, and line-to-line interaction while preserving
+  their editable preset geometry. The setting can inherit globally or be
+  overridden per line.
+- Cursor influence offsets clear immediately when disabled, rather than
+  continuing to repel or attract during the spring-release period. Cursor
+  deformation follows gravity-sagged geometry and respects gravity-pinned points.
+- The editor toolbar switches between the Magnetic Lines editor and a
+  full-page Cursor Effects settings view.
+- The shared-layout background supports exact pathname-specific scene
+  overrides, with route-specific defaults, automatic page loading and saving,
+  and an editor action for clearing a route override.
+- Cursor settings update an isolated preview that responds to pointer
+  movement and clicks. Website-wide cursor changes require an explicit
+  apply action; saved templates can be reused later. The editor includes
+  light/dark behavior previews, editable cursor/border/trail/click colors,
+  glass blur and transparency, glitch and arcade feedback, and opt-in
+  synthesized hover/click sounds. The system-cursor option leaves the native
+  OS pointer intact, and website-wide changes require explicit application.
+  Reset restores the native cursor; pointer states stay native until customized.
+  PNG, JPEG, WebP, or sanitized SVG cursor images support editable size and hotspot.
+  Custom cursor presets are drawn shapes rather than emoji glyphs.
+  The built-in Spider Pounce preset leaves the native pointer visible, trails
+  it with a walking spider, crouches when the pointer stops, and pounces to the
+  click location without drawing a web trail.
 - Zero React re-renders in the hot path: pointer position lives in a ref,
   target geometry lives in a plain-JS registry, and each frame mutates SVG
   `d`/`opacity`/gradient-stop attributes directly via refs.
-- Per-line z-index layering, solo/hide, drag-to-reorder (including a
-  Ctrl/Cmd-selected block), right-click duplicate/delete, motion presets,
+- Per-line z-index layering with front/back controls, drag-to-reorder (including a
+  Ctrl/Cmd-selected block), adjustable crossing gaps, solo/hide, right-click duplicate/delete, motion presets,
   global-settings-as-defaults, undo/redo
   that coalesces a whole drag or text edit
   into one step, JSON import (validated + clamped, never crashes on bad
@@ -149,6 +268,10 @@ clean `MagneticLinesSceneConfig` JSON you paste into your production code
   presets/templates, import/export, and reset actions are grouped in the
   adjacent three-dot menu. Right-click a line to duplicate/delete selected
   lines; right-click a group to duplicate, ungroup, or delete it.
+- The scene-template library includes 32 bundled scenes across eight searchable
+  categories, with a live preview rendered by the production component. Apply
+  a bundled or saved scene to the selected page, or save, duplicate, rename,
+  and delete browser-local templates without changing the bundled catalog.
 - The selected-line inspector groups Start and End coordinates into compact
   X/Y pairs. Numeric values throughout the editor can be dragged vertically
   using each control's configured step, or clicked to type an exact value;

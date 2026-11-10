@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ElementType, type ReactNode } from "react";
-import {
-  registerTarget,
-  setTargetActive,
-  updateTargetOptions,
-  type RegisterTargetOptions,
-} from "./engine/targetRegistry";
+import { registerTarget, updateTargetOptions, type RegisterTargetOptions } from "./engine/targetRegistry";
 
 export interface UseMagneticTargetOptions extends RegisterTargetOptions {
   id: string;
@@ -22,42 +17,20 @@ export interface UseMagneticTargetOptions extends RegisterTargetOptions {
  */
 export function useMagneticTarget<T extends Element>(options: UseMagneticTargetOptions) {
   const ref = useRef<T | null>(null);
-  const { id, magnetic, strength, radius, priority } = options;
+  const { id, magnetic, strength, radius, priority, activations, clickBehavior } = options;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    const unregister = registerTarget(id, el, { magnetic, strength, radius, priority });
-
-    const activate = () => setTargetActive(id, true);
-    const deactivate = () => setTargetActive(id, false);
-
-    el.addEventListener("pointerenter", activate);
-    el.addEventListener("pointerleave", deactivate);
-    el.addEventListener("focus", activate, true);
-    el.addEventListener("blur", deactivate, true);
-    el.addEventListener("touchstart", activate, { passive: true });
-    el.addEventListener("touchend", deactivate);
-    el.addEventListener("touchcancel", deactivate);
-
-    return () => {
-      el.removeEventListener("pointerenter", activate);
-      el.removeEventListener("pointerleave", deactivate);
-      el.removeEventListener("focus", activate, true);
-      el.removeEventListener("blur", deactivate, true);
-      el.removeEventListener("touchstart", activate);
-      el.removeEventListener("touchend", deactivate);
-      el.removeEventListener("touchcancel", deactivate);
-      unregister();
-    };
+    return registerTarget(id, el, { magnetic, strength, radius, priority, activations, clickBehavior });
     // Re-register only if the id changes; live option tweaks are pushed via the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
-    updateTargetOptions(id, { magnetic, strength, radius, priority });
-  }, [id, magnetic, strength, radius, priority]);
+    updateTargetOptions(id, { magnetic, strength, radius, priority, activations, clickBehavior });
+  }, [id, magnetic, strength, radius, priority, activations, clickBehavior]);
 
   return ref;
 }
@@ -69,9 +42,9 @@ export interface MagneticTargetProps extends UseMagneticTargetOptions {
 }
 
 /** Convenience wrapper: `<MagneticTarget id="hero-title">LET'S</MagneticTarget>` */
-export function MagneticTarget({ id, magnetic, strength, radius, priority, children, as }: MagneticTargetProps) {
+export function MagneticTarget({ id, magnetic, strength, radius, priority, activations, clickBehavior, children, as }: MagneticTargetProps) {
   const Tag = (as ?? "span") as ElementType;
-  const ref = useMagneticTarget<HTMLElement>({ id, magnetic, strength, radius, priority });
+  const ref = useMagneticTarget<HTMLElement>({ id, magnetic, strength, radius, priority, activations, clickBehavior });
   return (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     <Tag ref={ref as any} style={{ display: "inline-block" }} data-magnetic-target={id}>

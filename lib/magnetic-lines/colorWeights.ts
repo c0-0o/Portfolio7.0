@@ -42,3 +42,29 @@ export function setColorWeight(weights: readonly number[], index: number, reques
   const redistributed = distribute(100 - requested, otherWeights);
   return normalized.map((_, weightIndex) => weightIndex === index ? requested : redistributed[weightIndex]);
 }
+
+function interpolateHexColor(from: string, to: string, amount: number): string {
+  const normalize = (color: string) => {
+    const hex = color.replace("#", "");
+    const full = hex.length === 3 ? [...hex].map((digit) => `${digit}${digit}`).join("") : hex;
+    return /^[\da-f]{6}$/i.test(full) ? full : "8fa3b8";
+  };
+  const start = normalize(from);
+  const end = normalize(to);
+  const channel = (offset: number) => {
+    const a = parseInt(start.slice(offset, offset + 2), 16);
+    const b = parseInt(end.slice(offset, offset + 2), 16);
+    return Math.round(a + (b - a) * amount).toString(16).padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
+}
+
+export function getEvenlySpacedColors(colors: readonly string[], count: number): string[] {
+  if (colors.length === 0 || count <= 0) return [];
+  return Array.from({ length: count }, (_, index) => {
+    const position = ((index + 0.5) / count) * (colors.length - 1);
+    const lowerIndex = Math.floor(position);
+    const upperIndex = Math.min(colors.length - 1, lowerIndex + 1);
+    return interpolateHexColor(colors[lowerIndex], colors[upperIndex], position - lowerIndex);
+  });
+}

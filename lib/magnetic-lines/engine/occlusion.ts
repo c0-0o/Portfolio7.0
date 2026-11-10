@@ -25,7 +25,8 @@ function boundsFor(points: Point[], padding: number): Bounds | null {
   let right = points[0].x;
   let top = points[0].y;
   let bottom = points[0].y;
-  for (const point of points.slice(1)) {
+  for (let index = 1; index < points.length; index++) {
+    const point = points[index];
     left = Math.min(left, point.x);
     right = Math.max(right, point.x);
     top = Math.min(top, point.y);
@@ -40,6 +41,7 @@ function overlaps(a: Bounds, b: Bounds): boolean {
 
 /** Builds a deterministic SVG compositing plan without changing geometry. */
 export function createOcclusionMaskPlan(lines: OcclusionRuntimeLine[]): OcclusionMaskPlan[] {
+  if (!lines.some((line) => line.occlusionEnabled)) return [];
   const bounds = lines.map((line) => boundsFor(line.points, Math.max(1, line.width * 2)));
   const plan: OcclusionMaskPlan[] = [];
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {

@@ -61,26 +61,31 @@ export function nearestPointOnRectPerimeter(rect: AxisRect, p: Point): Point {
 }
 
 /** Catmull-Rom -> cubic Bezier conversion for a smooth SVG path through an ordered point list. */
-export function pointsToSmoothPath(points: Point[]): string {
+export function pointsToSmoothPath(points: Point[], closed = false): string {
   if (points.length === 0) return "";
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  if (points.length === 2) {
+  const isClosed = closed && points.length > 3 &&
+    points[0].x === points[points.length - 1].x &&
+    points[0].y === points[points.length - 1].y;
+  const controlPoints = isClosed ? points.slice(0, -1) : points;
+  if (controlPoints.length === 2) {
     return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
   }
-  const p = points;
+  const p = controlPoints;
+  const count = p.length;
   let d = `M ${p[0].x} ${p[0].y} `;
-  for (let i = 0; i < p.length - 1; i++) {
-    const p0 = p[i - 1] || p[i];
+  for (let i = 0; i < count - (isClosed ? 0 : 1); i++) {
+    const p0 = isClosed ? p[(i - 1 + count) % count] : p[i - 1] || p[i];
     const p1 = p[i];
-    const p2 = p[i + 1];
-    const p3 = p[i + 2] || p2;
+    const p2 = isClosed ? p[(i + 1) % count] : p[i + 1];
+    const p3 = isClosed ? p[(i + 2) % count] : p[i + 2] || p2;
     const c1x = p1.x + (p2.x - p0.x) / 6;
     const c1y = p1.y + (p2.y - p0.y) / 6;
     const c2x = p2.x - (p3.x - p1.x) / 6;
     const c2y = p2.y - (p3.y - p1.y) / 6;
     d += `C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y} `;
   }
-  return d.trim();
+  return `${d.trim()}${isClosed ? " Z" : ""}`;
 }
 
 export function pointsToPixelPath(points: Point[], step: number): string {

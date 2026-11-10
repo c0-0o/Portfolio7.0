@@ -3,7 +3,7 @@
 // editor's live preview call this â€” there is no separate "preview renderer".
 // ============================================================================
 
-import type { AnchorPointEndpoint, MagneticLineConfig, MagneticLinesSceneConfig, PathPoint, Point } from "../types";
+import type { AnchorPointEndpoint, EnvironmentConfig, MagneticLineConfig, MagneticLinesSceneConfig, PathPoint, Point } from "../types";
 import {
   clamp,
   clamp01,
@@ -17,18 +17,21 @@ import {
   pointsToPixelPath,
   pointsToPolylinePath,
 } from "./math";
-import { getActiveTargets, type TargetRuntime } from "./targetRegistry";
+import { createTargetFrameContext, type TargetFrameContext } from "./targetRegistry";
+import { isTargetLineEffectActive } from "./targetLineTriggers";
+import { createAirflowField, resolveLineEnvironment } from "../environment";
+import { getTextureGravityResponse, getTextureMaterialResponse } from "../texture";
 
 export const SAMPLES = 24;
 
 export interface LineRuntimeState {
   /** Current, eased (spring) magnetic offset per sample point, in px. */
   deformOffset: Point[];
+  /** Current, eased airflow-driven offset per sample point, in px. */
+  environmentOffset: Point[];
   /** Current, eased pointer-driven geometry offset per sample point, in px. */
   cursorOffset: Point[];
-  /** Current, eased ambient cursor glow intensity per sample point, 0..1. */
-  ambientGlowIntensity: number[];
-  /** Current, eased combined glow intensity per sample point, 0..1. */
+  /** Current, eased target and cursor glow intensity per sample point, 0..1. */
   glowIntensity: number[];
   outerGlowIntensity: number[];
 }
@@ -36,8 +39,8 @@ export interface LineRuntimeState {
 export function createLineRuntimeState(): LineRuntimeState {
   return {
     deformOffset: Array.from({ length: SAMPLES }, () => ({ x: 0, y: 0 })),
+    environmentOffset: Array.from({ length: SAMPLES }, () => ({ x: 0, y: 0 })),
     cursorOffset: Array.from({ length: SAMPLES }, () => ({ x: 0, y: 0 })),
-    ambientGlowIntensity: Array.from({ length: SAMPLES }, () => 0),
     glowIntensity: Array.from({ length: SAMPLES }, () => 0),
     outerGlowIntensity: Array.from({ length: SAMPLES }, () => 0),
   };
@@ -51,6 +54,7 @@ export interface PointerState {
 
 export interface AnchorPlaybackState {
   alwaysTime: number;
+  alwaysTimeByPathPointId?: ReadonlyMap<string, number>;
   hovering: boolean;
   hasHovered: boolean;
   hoverTime: number;
@@ -70,8 +74,7 @@ export interface ComputeResult {
   /** Per-sample normal line-glow intensity (length SAMPLES). */
   glowStops: number[];
   outerGlowStops: number[];
-  /** Maximum ambient cursor-glow intensity for the cursor-colored glow pass. */
-  ambientGlow: number;
+  segmentLengths: number[];
 }
 
 /**
@@ -195,6 +198,30 @@ function resolveAnchorPointTarget(point: MagneticLineConfig["anchorPoints"][numb
   }
 }
 
+function getAnchorSegmentDuration(from: Point, to: Point, target: MagneticLineConfig["anchorPoints"][number], includeDelay = true): number {
+  const delay = includeDelay ? Math.max(0, target.delay) : 0;
+  if (Math.hypot(to.x - from.x, to.y - from.y) <= 0.001) return delay;
+  const speed = Number.isFinite(target.speed) && target.speed > 0 ? target.speed : 1;
+  return delay + 1 / Math.max(0.05, speed);
+}
+
+export function getAnchorSequenceStepStartTime(
+  base: Point,
+  points: MagneticLineConfig["anchorPoints"],
+  viewport: { width: number; height: number },
+  stepIndex: number,
+): number {
+  const minDim = Math.min(viewport.width, viewport.height) || 1;
+  let elapsed = 0;
+  let previous = base;
+  for (const point of points.slice(0, Math.max(0, stepIndex))) {
+    const target = resolveAnchorPointTarget(point, base, viewport, minDim);
+    elapsed += getAnchorSegmentDuration(previous, target, point);
+    previous = target;
+  }
+  return elapsed;
+}
+
 function resolveAnchorSequence(
   base: Point,
   endpoint: AnchorPointEndpoint,
@@ -238,8 +265,7 @@ function resolveAnchorSequence(
   const path = oneShot && !returnToBase ? sequence : [...sequence, base];
   const segmentDurations = path.slice(1).map((_, index) => {
     const target = index < points.length ? points[index] : lastPoint;
-    const speed = Number.isFinite(target.speed) && target.speed > 0 ? target.speed : 1;
-    return 1 / Math.max(0.05, speed);
+    return getAnchorSegmentDuration(path[index], path[index + 1], target, index < points.length);
   });
   const cycleDuration = segmentDurations.reduce((total, duration) => total + duration, 0);
   const triggerTime = trigger === "hover"
@@ -248,7 +274,9 @@ function resolveAnchorSequence(
       : playback?.hoverFrozenTime ?? 0
     : trigger === "click"
       ? playback?.clickTime ?? 0
-      : playback?.alwaysTime ?? time;
+      : pathPointId && playback?.alwaysTimeByPathPointId?.has(pathPointId)
+        ? playback.alwaysTimeByPathPointId.get(pathPointId) ?? playback.alwaysTime ?? time
+        : playback?.alwaysTime ?? time;
 
   const elapsed = Math.max(0, Number.isFinite(triggerTime) ? triggerTime : 0);
   const progressTime = oneShot ? Math.min(elapsed, cycleDuration) : elapsed % Math.max(0.001, cycleDuration);
@@ -258,7 +286,14 @@ function resolveAnchorSequence(
   for (; segmentIndex < segmentDurations.length; segmentIndex++) {
     const duration = segmentDurations[segmentIndex];
     if (remaining <= duration || segmentIndex === segmentDurations.length - 1) {
-      segmentProgress = duration > 0 ? Math.min(1, remaining / duration) : 1;
+      const target = points[Math.min(segmentIndex, points.length - 1)];
+      const delay = segmentIndex < points.length ? Math.max(0, target.delay) : 0;
+      const movementDuration = Math.max(0, duration - delay);
+      segmentProgress = remaining <= delay
+        ? 0
+        : movementDuration > 0
+          ? Math.min(1, (remaining - delay) / movementDuration)
+          : 1;
       break;
     }
     remaining -= duration;
@@ -449,7 +484,7 @@ export function customPathPointFromViewport(
 }
 
 function resizeRuntimeState(state: LineRuntimeState, sampleCount: number): void {
-  const offsets = [state.deformOffset, state.cursorOffset];
+  const offsets = [state.deformOffset, state.environmentOffset, state.cursorOffset];
   for (const values of offsets) {
     if (values.length < sampleCount) {
       values.push(...Array.from({ length: sampleCount - values.length }, () => ({ x: 0, y: 0 })));
@@ -457,11 +492,30 @@ function resizeRuntimeState(state: LineRuntimeState, sampleCount: number): void 
       values.length = sampleCount;
     }
   }
-  const intensities = [state.ambientGlowIntensity, state.glowIntensity, state.outerGlowIntensity];
+  const intensities = [state.glowIntensity, state.outerGlowIntensity];
   for (const values of intensities) {
     if (values.length < sampleCount) values.push(...new Array(sampleCount - values.length).fill(0));
     else if (values.length > sampleCount) values.length = sampleCount;
   }
+}
+
+export function pathSegmentsFromResult(
+  points: Point[],
+  segmentLengths: number[],
+  pathType: "smooth" | "polyline" | "pixel",
+  pixelStep: number,
+): string[] {
+  let offset = 0;
+  return segmentLengths.map((length) => {
+    const segment = points.slice(offset, offset + length);
+    offset += length;
+    if (pathType === "pixel") return pointsToPixelPath(segment, pixelStep);
+    if (pathType === "polyline") return pointsToPolylinePath(segment);
+    const closed = segment.length > 2 &&
+      segment[0].x === segment[segment.length - 1].x &&
+      segment[0].y === segment[segment.length - 1].y;
+    return pointsToSmoothPath(segment, closed);
+  });
 }
 
 function pathFromSegments(
@@ -470,14 +524,92 @@ function pathFromSegments(
   pathType: "smooth" | "polyline" | "pixel",
   pixelStep: number,
 ): string {
-  let offset = 0;
-  return segmentLengths.map((length) => {
-    const segment = points.slice(offset, offset + length);
-    offset += length;
-    if (pathType === "pixel") return pointsToPixelPath(segment, pixelStep);
-    if (pathType === "polyline") return pointsToPolylinePath(segment);
-    return pointsToSmoothPath(segment);
-  }).join(" ");
+  return pathSegmentsFromResult(points, segmentLengths, pathType, pixelStep).join(" ");
+}
+
+function smoothAirflowOffsets(offsets: Point[], ranges: Array<{ start: number; end: number }>): Point[] {
+  const smoothed = offsets.map((point) => ({ ...point }));
+  for (const range of ranges) {
+    const length = range.end - range.start;
+    const radius = Math.min(8, Math.max(2, Math.floor(length * 0.04)));
+    for (let index = range.start; index < range.end; index++) {
+      let totalWeight = 0;
+      let x = 0;
+      let y = 0;
+      for (let neighbor = Math.max(range.start, index - radius); neighbor <= Math.min(range.end - 1, index + radius); neighbor++) {
+        const weight = radius + 1 - Math.abs(index - neighbor);
+        totalWeight += weight;
+        x += offsets[neighbor].x * weight;
+        y += offsets[neighbor].y * weight;
+      }
+      smoothed[index] = { x: x / totalWeight, y: y / totalWeight };
+    }
+  }
+  return smoothed;
+}
+
+function getGravityOffsets(
+  samples: Point[],
+  fixedPointIds: string[],
+  customPathControls: PathPoint[] | undefined,
+  viewport: { width: number; height: number },
+  strength: number,
+  materialResponse: number,
+): Point[] {
+  const offsets = Array.from({ length: samples.length }, () => ({ x: 0, y: 0 }));
+  if (strength <= 0 || offsets.length === 0) return offsets;
+  const fixedPoints: Point[] = [];
+  if (customPathControls) {
+    for (const id of fixedPointIds) {
+      const point = id === "start"
+        ? customPathControls[0]
+        : id === "end"
+          ? customPathControls[customPathControls.length - 1]
+          : customPathControls.find((item) => item.id === id);
+      if (point) fixedPoints.push({ x: point.x * viewport.width, y: point.y * viewport.height });
+    }
+  } else {
+    if (fixedPointIds.includes("start")) fixedPoints.push(samples[0]);
+    if (fixedPointIds.includes("end")) fixedPoints.push(samples[samples.length - 1]);
+  }
+
+  const seenFixedPointKeys = new Set<string>();
+  const uniqueFixedPoints = fixedPoints.filter((point) => {
+    const key = `${Math.round(point.x * 4)}:${Math.round(point.y * 4)}`;
+    if (seenFixedPointKeys.has(key)) return false;
+    seenFixedPointKeys.add(key);
+    return true;
+  });
+  if (uniqueFixedPoints.length === 0) {
+    let lowestPoint = Number.NEGATIVE_INFINITY;
+    for (const point of samples) lowestPoint = Math.max(lowestPoint, point.y);
+    const drop = Math.max(0, viewport.height - lowestPoint);
+    return offsets.map(() => ({ x: 0, y: drop * materialResponse }));
+  }
+
+  let maximumDistance = 0;
+  const distances = samples.map((sample) => {
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const point of uniqueFixedPoints) {
+      nearestDistance = Math.min(nearestDistance, distance(sample, point));
+    }
+    maximumDistance = Math.max(maximumDistance, nearestDistance);
+    return nearestDistance;
+  });
+  if (maximumDistance <= 0) return offsets;
+
+  const maximumSag = Math.min(viewport.width, viewport.height) * 0.2 * strength * materialResponse;
+  for (let index = 0; index < samples.length; index++) {
+    if (distances[index] < 0.25) continue;
+    const progress = distances[index] / maximumDistance;
+    const sagAmount = progress * progress * (3 - 2 * progress);
+    const availableDrop = Math.max(0, viewport.height - samples[index].y);
+    const drop = uniqueFixedPoints.length === 1
+      ? availableDrop * sagAmount * materialResponse
+      : Math.min(availableDrop, maximumSag * sagAmount);
+    offsets[index] = { x: 0, y: drop };
+  }
+  return offsets;
 }
 
 export function computeLine(
@@ -491,15 +623,18 @@ export function computeLine(
   motionScale = 1,
   interactionOffset?: Point[],
   surfaceOffset: Point = { x: 0, y: 0 },
-  anchorPlayback?: AnchorPlaybackState
+  anchorPlayback?: AnchorPlaybackState,
+  targetFrameContext?: TargetFrameContext,
+  resolvedEnvironment?: EnvironmentConfig,
 ): ComputeResult {
   const minDim = Math.min(viewport.width, viewport.height) || 1;
+  const bendable = config.shape.bendable !== false;
   const customPathActive = config.geometrySource === "path" && config.customPath.points.length >= 2;
   const customPathControls = customPathActive ? getCustomPathPointsInViewport(config, viewport) : undefined;
   const animatedPathControls = customPathActive
     ? (customPathControls ?? config.customPath.points).map((point) => {
       const base = { x: point.x * viewport.width, y: point.y * viewport.height };
-      const hasPathAnchors = config.anchorPoints.some((anchor) =>
+      const hasPathAnchors = bendable && config.anchorPoints.some((anchor) =>
         anchor.enabled && anchor.endpoint === "path" && anchor.pathPointId === point.id);
       if (!hasPathAnchors) return point;
       const animated = resolveAnchorSequence(base, "path", config, viewport, time, minDim, anchorPlayback, point.id);
@@ -512,12 +647,16 @@ export function computeLine(
   const pathTo: Point = customPathActive && lastCustomSegment
     ? lastCustomSegment[lastCustomSegment.length - 1]
     : { x: config.to.x * viewport.width, y: config.to.y * viewport.height };
-  const hasStartAnchors = config.anchorPoints.some((point) => point.endpoint === "start" && point.enabled);
-  const hasEndAnchors = config.anchorPoints.some((point) => point.endpoint === "end" && point.enabled);
-  const from = hasStartAnchors
+  const hasStartAnchors = bendable && config.anchorPoints.some((point) => point.endpoint === "start" && point.enabled);
+  const hasEndAnchors = bendable && config.anchorPoints.some((point) => point.endpoint === "end" && point.enabled);
+  const from = !bendable
+    ? pathFrom
+    : hasStartAnchors
     ? resolveAnchorSequence(pathFrom, "start", config, viewport, time, minDim, anchorPlayback)
     : anchorMotionOffset(config.anchorMotion.start, pathFrom, time, minDim, true);
-  const to = hasEndAnchors
+  const to = !bendable
+    ? pathTo
+    : hasEndAnchors
     ? resolveAnchorSequence(pathTo, "end", config, viewport, time, minDim, anchorPlayback)
     : anchorMotionOffset(config.anchorMotion.end, pathTo, time, minDim, false);
   const dir = { x: to.x - from.x, y: to.y - from.y };
@@ -536,10 +675,13 @@ export function computeLine(
   }
   const previousSampleIndices = new Array<number>(sampleCount);
   const nextSampleIndices = new Array<number>(sampleCount);
+  const sampleEndpointEnvelopes = new Array<number>(sampleCount);
   for (const range of sampleSegmentRanges) {
     for (let index = range.start; index < range.end; index++) {
       previousSampleIndices[index] = Math.max(range.start, index - 1);
       nextSampleIndices[index] = Math.min(range.end - 1, index + 1);
+      const progress = (index - range.start) / Math.max(1, range.end - range.start - 1);
+      sampleEndpointEnvelopes[index] = Math.sin(Math.PI * progress);
     }
   }
   const motion = config.motion;
@@ -571,20 +713,20 @@ export function computeLine(
       const localNormal = perpendicular(pathCurrent && pathPrevious && pathNext
         ? { x: pathNext.x - pathPrevious.x, y: pathNext.y - pathPrevious.y }
         : dir);
-      const shapeDeform = shapeOffset(shape, s, minDim);
+      const shapeDeform = bendable ? shapeOffset(shape, s, minDim) : 0;
 
       let offset = 0;
-      if (motion.type === "tension") {
+      if (bendable && motion.enabled !== false && motion.type === "tension") {
         const envelope = Math.sin(Math.PI * s);
         offset = amplitudePx * envelope * Math.sin(motionTime * motion.speed * Math.PI * 2 + motion.phase);
-      } else if (motion.type === "floating") {
+      } else if (bendable && motion.enabled !== false && motion.type === "floating") {
         const envelope = 0.35 + 0.65 * Math.sin(Math.PI * s);
         offset =
           amplitudePx *
           envelope *
           (Math.sin(motionTime * motion.speed * Math.PI * 0.6 + motion.phase + s * motion.frequency * 2) * 0.7 +
             Math.sin(motionTime * motion.speed * Math.PI * 0.23 + motion.phase * 1.7) * 0.3);
-      } else {
+      } else if (bendable && motion.enabled !== false) {
         const envelope = Math.sin(Math.PI * s);
         offset =
           amplitudePx *
@@ -593,68 +735,109 @@ export function computeLine(
           Math.sin(motionTime * motion.speed * Math.PI * 2 * (3 + motion.frequency) + motion.phase + s * 14);
       }
 
-      const totalOffset = shape.type === "straight" ? 0 : shapeDeform + offset;
+      const totalOffset = (shape.type === "straight" && !customPathActive ? 0 : shapeDeform) + offset;
       basePoints[sampleIndex] = { x: base.x + localNormal.x * totalOffset, y: base.y + localNormal.y * totalOffset };
     }
   });
+  if (bendable && config.gravity?.enabled) {
+    const gravityOffsets = getGravityOffsets(
+      basePoints,
+      config.gravity.fixedPointIds ?? ["start", "end"],
+      customPathActive ? animatedPathControls : undefined,
+      viewport,
+      config.gravity.strength ?? 0.35,
+      getTextureGravityResponse(config.texture.type, config.texture.weight, config.texture.enabled),
+    );
+    for (let index = 0; index < basePoints.length; index++) {
+      basePoints[index].y += gravityOffsets[index].y;
+    }
+  }
   // ---- 2. Magnetic deformation (desired offsets, before spring easing) ----
   const desired: Point[] = new Array(sampleCount);
   for (let i = 0; i < sampleCount; i++) desired[i] = { x: 0, y: 0 };
   const targetGlow: number[] = new Array(sampleCount).fill(0);
-  const targetOuterGlow: number[] = new Array(sampleCount).fill(0);
 
-  const magnetismOn = scene.global.magnetismEnabled && config.magnet.enabled;
-  if (magnetismOn) {
-    const active = getActiveTargets(scene.targets).filter((target) => { const targetConfig = scene.targets.find((item) => item.id === target.id); return targetConfig?.enabled !== false && targetConfig?.magnetic !== false && (!config.magnet.targetId || target.id === config.magnet.targetId); });
-    if (active.length > 0) {
-      const dominant: TargetRuntime = active[0];
-      const targetCfg = scene.targets.find((t) => t.id === dominant.id);
-      if (targetCfg?.enabled !== false && targetCfg?.magnetic !== false) {
+  const magnetismOn = bendable && scene.global.magnetismEnabled && config.magnet.enabled;
+  const targetEffectsOn = magnetismOn || config.glow.enabled;
+  if (targetEffectsOn) {
+    const targetContext = targetFrameContext ?? createTargetFrameContext(scene.targets);
+    const isAssignedTarget = (targetConfig: TargetFrameContext[number]["config"]) =>
+      targetConfig?.enabled !== false &&
+      (targetConfig?.lineIds == null || targetConfig.lineIds.includes(config.id));
+    const magnetTarget = magnetismOn
+      ? targetContext.find(({ runtime, config: targetConfig, activeActivations }) =>
+          isAssignedTarget(targetConfig) &&
+          runtime.magnetic &&
+          targetConfig?.magnetic !== false &&
+          (!config.magnet.targetId || runtime.id === config.magnet.targetId) &&
+          isTargetLineEffectActive(targetConfig, config.id, "magnet", activeActivations))
+      : undefined;
+    const glowTarget = config.glow.enabled
+      ? targetContext.find(({ config: targetConfig, activeActivations }) =>
+          isAssignedTarget(targetConfig) &&
+          isTargetLineEffectActive(targetConfig, config.id, "glow", activeActivations))
+      : undefined;
+    const effectTargets = magnetTarget === glowTarget
+      ? magnetTarget ? [magnetTarget] : []
+      : [magnetTarget, glowTarget].filter((target) => target !== undefined);
+    for (const effectTarget of effectTargets) {
+      const { runtime: dominant, config: targetCfg } = effectTarget;
+      const targetMagnetActive = effectTarget === magnetTarget;
+      const targetGlowActive = effectTarget === glowTarget;
       const registeredRect = dominant.rect!;
-      const rect = { left: registeredRect.left - surfaceOffset.x, top: registeredRect.top - surfaceOffset.y, right: registeredRect.right - surfaceOffset.x, bottom: registeredRect.bottom - surfaceOffset.y, width: registeredRect.width, height: registeredRect.height };
-      const radiusPx = (config.magnet.radius + (targetCfg?.radius ?? 0) + dominant.radius) * minDim;
-      const strength = clamp01(config.magnet.strength * dominant.strength * (targetCfg?.strength ?? 1));
+      const rect = {
+        left: registeredRect.left - surfaceOffset.x,
+        top: registeredRect.top - surfaceOffset.y,
+        right: registeredRect.right - surfaceOffset.x,
+        bottom: registeredRect.bottom - surfaceOffset.y,
+        width: registeredRect.width,
+        height: registeredRect.height,
+      };
+      const radiusPx = (config.magnet.radius + (targetCfg?.radius ?? dominant.radius)) * minDim;
+      const strength = clamp01((config.magnet.strength / 100) * (targetCfg?.strength ?? dominant.strength));
       const maxDeformPx = config.magnet.maxDeformation * minDim;
-      const broadRadius = radiusPx + Math.max(rect.width, rect.height);
+      const innerGlowRadiusPx = config.glow.enabled ? config.glow.radius * minDim : 0;
+      const broadRadius = Math.max(
+        targetMagnetActive ? radiusPx : 0,
+        targetGlowActive ? innerGlowRadiusPx : 0,
+      ) + Math.max(rect.width, rect.height);
       const cx = (rect.left + rect.right) / 2;
       const cy = (rect.top + rect.bottom) / 2;
+      const pointerInsideTarget = pointer?.active && config.cursorGlow.enabled &&
+        pointer.x >= rect.left && pointer.x <= rect.right &&
+        pointer.y >= rect.top && pointer.y <= rect.bottom;
 
       for (let i = 0; i < sampleCount; i++) {
         const p = basePoints[i];
         if (distance(p, { x: cx, y: cy }) > broadRadius) continue; // cheap broad-phase reject
         const nearest = nearestPointOnRectPerimeter(rect, p);
         const distToPerimeter = distance(p, nearest);
-        const f = falloff(distToPerimeter, radiusPx, config.magnet.falloff);
-        if (f <= 0 || strength <= 0 || maxDeformPx <= 0) continue;
+        if (targetGlowActive && !pointerInsideTarget) {
+          const innerGlowStrength = falloff(distToPerimeter, innerGlowRadiusPx, config.glow.falloff / 100);
+          targetGlow[i] = Math.max(
+            targetGlow[i],
+            innerGlowStrength * clamp01(config.glow.intensity / 100) * clamp01(config.glow.opacity / 100),
+          );
+        }
+        if (!targetMagnetActive || strength <= 0 || maxDeformPx <= 0) continue;
+        const f = falloff(distToPerimeter, radiusPx, config.magnet.falloff / 100);
+        if (f <= 0) continue;
         const pull = f * strength * config.motion.deformability * motionScale;
         const previous = basePoints[previousSampleIndices[i]];
         const next = basePoints[nextSampleIndices[i]];
         const localNormal = perpendicular({ x: next.x - previous.x, y: next.y - previous.y });
         const signedDistance = (nearest.x - p.x) * localNormal.x + (nearest.y - p.y) * localNormal.y;
         if (Math.abs(signedDistance) <= 0.0001) continue;
-        const displacement = Math.min(maxDeformPx, Math.abs(signedDistance) * pull);
+        const displacement = maxDeformPx * pull;
         const direction = Math.sign(signedDistance);
         const dx = localNormal.x * displacement * direction;
         const dy = localNormal.y * displacement * direction;
         desired[i] = { x: dx, y: dy };
-
-        const innerGlowRadiusPx = config.glow.radius * minDim;
-        const innerGlowStrength = falloff(distToPerimeter, innerGlowRadiusPx, config.glow.falloff);
-        if (config.glow.enabled) {
-          targetGlow[i] = Math.max(targetGlow[i], innerGlowStrength * config.glow.intensity);
-        }
-        if (config.outerGlow.enabled) {
-          const outerGlowRadiusPx = config.outerGlow.radius * minDim;
-          const outerGlowStrength = falloff(distToPerimeter, outerGlowRadiusPx, config.outerGlow.falloff);
-          targetOuterGlow[i] = Math.max(targetOuterGlow[i], outerGlowStrength * config.outerGlow.intensity);
-        }
       }
 
       // Spread glow along a length window around the strongest sample, so the whole
       // background does not light up â€” only the relevant stretch of this one line.
-      if (config.glow.enabled) spreadGlowSamples(targetGlow, config.glow.length);
-      if (config.outerGlow.enabled) spreadGlowSamples(targetOuterGlow, config.outerGlow.length);
-    }
+      if (targetGlowActive) spreadGlowSamples(targetGlow, config.glow.length / 100);
   }
 }
 
@@ -662,24 +845,97 @@ export function computeLine(
   const springTau = 0.18; // seconds â€” feel of settle-in / spring-back-on-release
   const springFactor = 1 - Math.exp(-Math.min(0.05, Math.max(0, dt)) / springTau);
   for (let i = 0; i < sampleCount; i++) {
-    state.deformOffset[i] = {
-      x: lerp(state.deformOffset[i].x, desired[i].x, springFactor),
-      y: lerp(state.deformOffset[i].y, desired[i].y, springFactor),
-    };
+    state.deformOffset[i] = bendable
+      ? {
+        x: lerp(state.deformOffset[i].x, desired[i].x, springFactor),
+        y: lerp(state.deformOffset[i].y, desired[i].y, springFactor),
+      }
+      : { x: 0, y: 0 };
   }
 
-  // ---- 4. Cursor Influence (geometry only, after Magnet) ----
+  // ---- 4. Local airflow response (after Magnet, before cursor influence) ----
+  const environment = resolvedEnvironment ?? resolveLineEnvironment(scene.global.environment, config.environment, config.environmentEnabled);
+  const isSilk = config.texture.enabled && config.texture.type === "silk";
+  const materialResponse = getTextureMaterialResponse(config.texture.type, config.texture.weight, config.texture.enabled);
+  const minimumAirflowRadius = sampleSegmentRanges.reduce((minimum, range) => {
+    if (range.end - range.start < 2) return minimum;
+    let segmentLength = 0;
+    for (let index = range.start + 1; index < range.end; index++) {
+      segmentLength += distance(basePoints[index - 1], basePoints[index]);
+    }
+    return Math.max(minimum, (segmentLength / (range.end - range.start - 1)) * 0.6);
+  }, 0);
+  const airflowField = bendable ? createAirflowField(environment, viewport, isSilk, minimumAirflowRadius) : null;
+  const airSpringTau = config.texture.enabled && config.texture.type === "silk" ? 0.3 : 0.19;
+  const airSpringFactor = 1 - Math.exp(-Math.min(0.05, Math.max(0, dt)) / airSpringTau);
+  const desiredAirOffsets = new Array<Point>(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    let desiredAir = { x: 0, y: 0 };
+    if (airflowField) {
+      const previous = basePoints[previousSampleIndices[i]];
+      const next = basePoints[nextSampleIndices[i]];
+      desiredAir = airflowField(
+        { x: basePoints[i].x + state.deformOffset[i].x, y: basePoints[i].y + state.deformOffset[i].y },
+        { x: next.x - previous.x, y: next.y - previous.y },
+        time,
+        materialResponse,
+      );
+    }
+    desiredAirOffsets[i] = desiredAir;
+  }
+  const resolvedAirOffsets = isSilk ? smoothAirflowOffsets(desiredAirOffsets, sampleSegmentRanges) : desiredAirOffsets;
+  for (let i = 0; i < sampleCount; i++) {
+    state.environmentOffset[i] = bendable
+      ? {
+        x: lerp(state.environmentOffset[i].x, resolvedAirOffsets[i].x, airSpringFactor),
+        y: lerp(state.environmentOffset[i].y, resolvedAirOffsets[i].y, airSpringFactor),
+      }
+      : { x: 0, y: 0 };
+  }
+
+  // ---- 5. Cursor Influence (geometry only, after Magnet and airflow) ----
   const cursorDesired: Point[] = Array.from({ length: sampleCount }, () => ({ x: 0, y: 0 }));
   const magnetizedPoints = basePoints.map((point, i) => ({
-    x: point.x + state.deformOffset[i].x,
-    y: point.y + state.deformOffset[i].y,
+    x: point.x + state.deformOffset[i].x + state.environmentOffset[i].x,
+    y: point.y + state.deformOffset[i].y + state.environmentOffset[i].y,
   }));
   const cursorConfig = config.cursorInfluence;
-  if (cursorConfig.enabled && pointer?.active && cursorConfig.radius > 0 && cursorConfig.maxDeformation > 0) {
+  const gravityPinnedSampleIndices = new Set<number>();
+  if (config.gravity?.enabled) {
+    const fixedPointIds = config.gravity.fixedPointIds ?? ["start", "end"];
+    for (const id of fixedPointIds) {
+      let fixedPoint: Point | undefined;
+      if (customPathActive && animatedPathControls) {
+        const pathPoint = id === "start"
+          ? animatedPathControls[0]
+          : id === "end"
+            ? animatedPathControls[animatedPathControls.length - 1]
+            : animatedPathControls.find((point) => point.id === id);
+        if (pathPoint) fixedPoint = { x: pathPoint.x * viewport.width, y: pathPoint.y * viewport.height };
+      } else if (id === "start") {
+        fixedPoint = basePoints[0];
+      } else if (id === "end") {
+        fixedPoint = basePoints[basePoints.length - 1];
+      }
+      if (!fixedPoint) continue;
+
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < basePoints.length; index++) {
+        const candidateDistance = distance(basePoints[index], fixedPoint);
+        if (candidateDistance < nearestDistance) {
+          nearestDistance = candidateDistance;
+          nearestIndex = index;
+        }
+      }
+      gravityPinnedSampleIndices.add(nearestIndex);
+    }
+  }
+  if (bendable && cursorConfig.enabled && pointer?.active && cursorConfig.radius > 0 && cursorConfig.maxDeformation > 0) {
     const radiusPx = cursorConfig.radius * minDim;
     const maxDeformPx = cursorConfig.maxDeformation * minDim;
     for (let i = 0; i < sampleCount; i++) {
-      const s = i / Math.max(1, sampleCount - 1);
+      if (gravityPinnedSampleIndices.has(i)) continue;
       const point = magnetizedPoints[i];
       const previous = magnetizedPoints[previousSampleIndices[i]];
       const next = magnetizedPoints[nextSampleIndices[i]];
@@ -688,37 +944,52 @@ export function computeLine(
       const dx = pointer.x - point.x;
       const dy = pointer.y - point.y;
       const distanceToPointer = Math.hypot(dx, dy);
-      const influence = falloff(distanceToPointer, radiusPx, cursorConfig.falloff) * clamp01(cursorConfig.strength) * Math.sin(Math.PI * s);
-      if (influence <= 0) continue;
+      const direction = cursorConfig.mode === "repel" ? -1 : 1;
+      const distanceInfluence = falloff(distanceToPointer, radiusPx, cursorConfig.falloff);
+      const profileExponent = cursorConfig.profile === "soft" ? 0.5 : cursorConfig.profile === "focused" ? 2 : 1;
       const normalPull = dx * localNormal.x + dy * localNormal.y;
-      let offsetX = localNormal.x * normalPull * influence;
-      let offsetY = localNormal.y * normalPull * influence;
-      const magnitude = Math.hypot(offsetX, offsetY);
-      if (magnitude > maxDeformPx && magnitude > 0) {
-        offsetX = (offsetX / magnitude) * maxDeformPx;
-        offsetY = (offsetY / magnitude) * maxDeformPx;
-      }
+      if (distanceInfluence <= 0 || Math.abs(normalPull) <= 0.0001) continue;
+      const influence = Math.min(1, Math.pow(distanceInfluence, profileExponent) * Math.max(0, cursorConfig.strength) * materialResponse) *
+        sampleEndpointEnvelopes[i];
+      const displacement = maxDeformPx * influence * Math.sign(normalPull) * direction;
+      const offsetX = localNormal.x * displacement;
+      const offsetY = localNormal.y * displacement;
       cursorDesired[i] = { x: offsetX, y: offsetY };
     }
   }
-  const cursorSpringFactor = 1 - Math.exp(-Math.min(0.05, Math.max(0, dt)) / 0.12);
+  const cursorSmoothingTime = 0.02 + clamp01(cursorConfig.smoothing) * 0.5;
+  const cursorSpringFactor = 1 - Math.exp(-Math.min(0.05, Math.max(0, dt)) / cursorSmoothingTime);
   for (let i = 0; i < sampleCount; i++) {
-    state.cursorOffset[i] = {
-      x: lerp(state.cursorOffset[i].x, cursorDesired[i].x, cursorSpringFactor),
-      y: lerp(state.cursorOffset[i].y, cursorDesired[i].y, cursorSpringFactor),
-    };
+    state.cursorOffset[i] = bendable && cursorConfig.enabled
+      ? {
+        x: lerp(state.cursorOffset[i].x, cursorDesired[i].x, cursorSpringFactor),
+        y: lerp(state.cursorOffset[i].y, cursorDesired[i].y, cursorSpringFactor),
+      }
+      : { x: 0, y: 0 };
   }
 
   // ---- 4. Ambient cursor glow (visual only â€” never bends the line) ----
-  const ambientTarget: number[] = new Array(sampleCount).fill(0);
   const preConstraintPoints = basePoints.map((point, i) => ({
-    x: point.x + state.deformOffset[i].x + state.cursorOffset[i].x,
-    y: point.y + state.deformOffset[i].y + state.cursorOffset[i].y,
+    x: point.x + state.deformOffset[i].x + state.environmentOffset[i].x + (cursorConfig.enabled ? state.cursorOffset[i].x : 0),
+    y: point.y + state.deformOffset[i].y + state.environmentOffset[i].y + (cursorConfig.enabled ? state.cursorOffset[i].y : 0),
   }));
   const finalGeometryPoints = preConstraintPoints.map((point, i) => ({
     x: point.x + (interactionOffset?.[i]?.x ?? 0),
     y: point.y + (interactionOffset?.[i]?.y ?? 0),
   }));
+  if (pointer?.active && config.cursorGlow.enabled && config.glow.enabled) {
+    const radiusPx = config.glow.radius * minDim;
+    if (radiusPx > 0) {
+      for (let i = 0; i < sampleCount; i++) {
+        const distanceToPointer = distance(finalGeometryPoints[i], pointer);
+        const cursorGlow = falloff(distanceToPointer, radiusPx, config.glow.falloff / 100) *
+          clamp01(config.glow.intensity / 100) *
+          clamp01(config.glow.opacity / 100);
+        targetGlow[i] = Math.max(targetGlow[i], cursorGlow);
+      }
+      spreadGlowSamples(targetGlow, config.glow.length / 100);
+    }
+  }
   const constraint = config.constraint;
   if (constraint.enabled) {
     const maxDeformPx = constraint.maxDeformation * minDim;
@@ -739,46 +1010,29 @@ export function computeLine(
       }
     }
   }
-  const ambientOn = scene.cursor.enabled && config.cursorGlow.enabled && pointer?.active;
-  if (ambientOn && pointer) {
-    const radiusPx = scene.cursor.radius * minDim;
-    const intensity = scene.cursor.intensity * scene.cursor.opacity;
-    if (radiusPx > 0 && intensity > 0) {
-      for (let i = 0; i < sampleCount; i++) {
-        const d = distance(finalGeometryPoints[i], { x: pointer.x, y: pointer.y });
-        ambientTarget[i] = falloff(d, radiusPx, scene.cursor.falloff) * intensity;
-      }
-      let strongest = 0;
-      for (let i = 1; i < sampleCount; i++) if (ambientTarget[i] > ambientTarget[strongest]) strongest = i;
-      const spread = Math.max(1, Math.round(scene.cursor.length * sampleCount));
-      for (let i = 0; i < sampleCount; i++) {
-        const distanceFromStrongest = Math.abs(i - strongest);
-        if (distanceFromStrongest > spread) ambientTarget[i] = 0;
-        else ambientTarget[i] *= 1 - distanceFromStrongest / (spread + 1);
-      }
-    }
+  const customPathPoints = config.customPath.points;
+  const isClosedConnectedPath = customPathActive &&
+    config.customPath.closedJoint !== "breakable" &&
+    !customPathPoints.some((point) => point.moveTo) &&
+    customPathPoints.length > 2 &&
+    customPathPoints[0].x === customPathPoints[customPathPoints.length - 1].x &&
+    customPathPoints[0].y === customPathPoints[customPathPoints.length - 1].y &&
+    finalGeometryPoints.length > 1;
+  if (isClosedConnectedPath) {
+    const first = finalGeometryPoints[0];
+    const last = finalGeometryPoints[finalGeometryPoints.length - 1];
+    const joined = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+    finalGeometryPoints[0] = joined;
+    finalGeometryPoints[finalGeometryPoints.length - 1] = joined;
   }
-
-  // ---- 5. Combine + ease glow, keeping ambient color separate ----
+  // ---- 5. Smooth target-activated inner glow ----
   const smoothing = clamp01(scene.cursor.smoothing);
   const attackFactor = 1 - Math.exp(-dt / lerp(0.05, 0.6, smoothing));
   const releaseFactor = 1 - Math.exp(-dt / lerp(0.8, 0.05, scene.cursor.releaseSpeed));
-  let ambientMaxGlow = 0;
+  const maxCombinedGlow = clamp01(scene.global.glowMaxCombinedIntensity / 100);
   for (let i = 0; i < sampleCount; i++) {
-    const ambientValue = Math.min(scene.cursor.maxIntensity, scene.global.glowMaxCombinedIntensity, ambientTarget[i]);
-    state.ambientGlowIntensity[i] = lerp(state.ambientGlowIntensity[i], ambientValue, ambientValue < state.ambientGlowIntensity[i] ? releaseFactor : attackFactor);
-    const glowValue = Math.min(scene.global.glowMaxCombinedIntensity, targetGlow[i]);
+    const glowValue = Math.min(maxCombinedGlow, targetGlow[i]);
     state.glowIntensity[i] = lerp(state.glowIntensity[i], glowValue, glowValue < state.glowIntensity[i] ? releaseFactor : attackFactor);
-    const outerGlowValue = Math.min(scene.global.glowMaxCombinedIntensity, targetOuterGlow[i]);
-    state.outerGlowIntensity[i] = lerp(state.outerGlowIntensity[i], outerGlowValue, outerGlowValue < state.outerGlowIntensity[i] ? releaseFactor : attackFactor);
-    const combinedIntensity = state.ambientGlowIntensity[i] + state.glowIntensity[i] + state.outerGlowIntensity[i];
-    if (combinedIntensity > scene.global.glowMaxCombinedIntensity) {
-      const scale = scene.global.glowMaxCombinedIntensity / combinedIntensity;
-      state.ambientGlowIntensity[i] *= scale;
-      state.glowIntensity[i] *= scale;
-      state.outerGlowIntensity[i] *= scale;
-    }
-    if (state.ambientGlowIntensity[i] > ambientMaxGlow) ambientMaxGlow = state.ambientGlowIntensity[i];
   }
 
   // ---- 6. Final geometry ----
@@ -806,6 +1060,6 @@ export function computeLine(
     points: finalPoints,
     glowStops: state.glowIntensity,
     outerGlowStops: state.outerGlowIntensity,
-    ambientGlow: ambientMaxGlow,
+    segmentLengths,
   };
 }
