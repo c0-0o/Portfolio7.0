@@ -1,0 +1,622 @@
+.selectedWork {
+  width: min(100% - 40px, 1180px);
+  margin: 0 auto;
+  padding: 64px 0 84px;
+}
+
+.heading {
+  margin: 0 0 38px;
+  font: 400 clamp(40px, 6vw, 64px) / 1.02 var(--font-lilita-one), sans-serif;
+}
+
+.worksList {
+  display: flex;
+  flex-direction: column;
+  gap: 42px;
+}
+
+.featuredWork {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.92fr) minmax(0, 1.08fr);
+  align-items: center;
+  gap: clamp(32px, 6vw, 72px);
+}
+
+.featuredVisual {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: visible;
+  text-decoration: none;
+}
+
+.backgroundShape {
+  position: absolute;
+  top: 14%;
+  left: 14%;
+  width: 72%;
+  height: 72%;
+  border-radius: 10px;
+  background: #adeb66;
+  transform: rotate(7deg);
+  transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.architectureImage {
+  position: absolute;
+  top: 9%;
+  left: 9%;
+  width: 82%;
+  height: 82%;
+  border-radius: 10px;
+  object-fit: contain;
+  transform: rotate(-6deg);
+  transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.darkSquare {
+  position: absolute;
+  right: 8%;
+  bottom: 8%;
+  width: 12px;
+  aspect-ratio: 1;
+  background: #141712;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sparkle {
+  position: absolute;
+  top: 7%;
+  right: 7%;
+  color: #4b741f;
+  font-size: clamp(28px, 4vw, 48px);
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.featuredVisual:hover .backgroundShape,
+.featuredVisual:focus-visible .backgroundShape {
+  transform: translate(2%, 2%) rotate(4deg) scale(0.98);
+}
+
+.featuredVisual:hover .architectureImage,
+.featuredVisual:focus-visible .architectureImage {
+  transform: rotate(-2deg) scale(1.02);
+}
+
+.featuredVisual:hover .darkSquare,
+.featuredVisual:focus-visible .darkSquare {
+  transform: translate(-2px, 2px);
+}
+
+.featuredVisual:hover .sparkle,
+.featuredVisual:focus-visible .sparkle {
+  transform: rotate(45deg) scale(1.05);
+}
+
+.featuredVisual:focus-visible {
+  outline: 2px solid #4b741f;
+  outline-offset: 6px;
+}
+
+.workDetails {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 27px;
+}
+
+.workOverview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workIntro {
+  min-width: 0;
+}
+
+.workCategory {
+  margin: 0;
+  color: #62695c;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.workDescription {
+  margin-top: 0;
+}
+
+.workTitle {
+  margin: 0;
+  font: 400 clamp(28px, 3.3vw, 38px) / 1.08 var(--font-lilita-one), sans-serif;
+  transition:
+    color 0.25s ease,
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.workSummary {
+  max-width: 540px;
+  margin: 9px 0 0;
+  color: #62695c;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  padding: 6px 11px;
+  border: 1px solid #dde2d6;
+  border-radius: 99px;
+  color: #62695c;
+  font-size: 11px;
+  transition: border-color 0.2s ease;
+}
+
+.externalLink {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #141712;
+  text-decoration: none;
+  transition: background-color 0.25s ease;
+}
+
+.externalLink:hover,
+.externalLink:focus-visible,
+.workOverview:has(.workCopy:hover) .externalLink {
+  background: #adeb66;
+}
+
+.externalLink img {
+  display: block;
+}
+
+.caseStudyDetails {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding-top: 20px;
+  border-top: 1px solid #dde2d6;
+}
+
+.caseStudyColumn {
+  min-width: 0;
+}
+
+.caseStudyLabel {
+  margin: 0;
+  color: #4b741f;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.caseStudyText {
+  margin: 9px 0 0;
+  color: #62695c;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.caseStudyActions {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 15px;
+}
+
+.divider {
+  width: 1px;
+  height: 28px;
+  background: #dde2d6;
+}
+
+.behanceLink {
+  color: #a4ab9e;
+  font-size: 18px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.behanceLink:hover,
+.behanceLink:focus-visible {
+  color: #141712;
+  transform: translateY(-2px);
+}
+
+.olderWorks {
+  min-width: 0;
+  padding-top: 20px;
+}
+
+.olderWorkHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.olderWorkLabel,
+.olderWorkNote {
+  margin: 0;
+}
+
+.olderWorkLabel {
+  color: #62695c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.olderWorkNote {
+  margin-top: 4px;
+  color: #8a9083;
+  font-size: 11px;
+}
+
+.cardsNav {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #dde2d6;
+  border-radius: 999px;
+  background: #f7f8f2;
+}
+
+.navButton {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #62695c;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.navButton:hover {
+  background: #adeb66;
+  color: #141712;
+}
+
+.navButton svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  transition: transform 0.2s ease;
+}
+
+.previous:hover svg {
+  transform: translateX(-2px);
+}
+
+.next:hover svg {
+  transform: translateX(2px);
+}
+
+.navButton:focus-visible {
+  outline: 2px solid #4b741f;
+  outline-offset: 3px;
+}
+
+.projectViewport {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.projectViewport::-webkit-scrollbar {
+  display: none;
+}
+
+.projectGrid {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  grid-auto-columns: clamp(220px, 24vw, 290px);
+  grid-auto-flow: column;
+  grid-template-rows: minmax(190px, auto);
+  gap: 46px 24px;
+  padding: 18px 8px 34px;
+}
+
+.projectCard {
+  position: relative;
+  display: block;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  color: #141712;
+  scroll-snap-align: start;
+  text-decoration: none;
+}
+
+.cardYear {
+  position: absolute;
+  top: 5%;
+  left: 7%;
+  z-index: 2;
+  color: #62695c;
+  font-size: 13px;
+  letter-spacing: 1px;
+  transform: rotate(-4deg);
+  transform-origin: left bottom;
+}
+
+.cardShape {
+  position: absolute;
+  inset: 5% 7% 8%;
+  z-index: 1;
+  border-radius: 9px;
+  background: #141712;
+  transform: translate(-4%, -4%) rotate(-7deg) scale(0.96);
+  transform-origin: 100% 0;
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cardArtwork {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(145deg, #20271f, #141712 72%);
+}
+
+.cardTitle {
+  position: absolute;
+  right: 0;
+  bottom: calc(-12% + 3px);
+  z-index: 2;
+  color: #141712;
+  font: 400 clamp(17px, 1.7vw, 22px) / 1 var(--font-lilita-one), sans-serif;
+  text-align: right;
+  white-space: nowrap;
+  transform: rotate(7deg);
+  transform-origin: right top;
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.projectCard:hover .cardTitle,
+.projectCard:focus-visible .cardTitle {
+  transform: rotate(0);
+}
+
+.cardDot {
+  position: absolute;
+  top: 5%;
+  right: 5%;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  aspect-ratio: 1;
+  background: #adeb66;
+  box-shadow: 0 1px 2px #0005;
+  transform: rotate(7deg);
+  transition:
+    background-color 0.2s ease,
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.projectCard:hover .cardShape,
+.projectCard:focus-visible .cardShape {
+  z-index: 3;
+  transform: translate(-4%, -4%) rotate(0) scale(0.98);
+}
+
+.projectCard:hover .cardDot,
+.projectCard:focus-visible .cardDot {
+  background: #adeb66;
+  transform: rotate(0) scale(1.05);
+}
+
+.projectCard:focus-visible,
+.externalLink:focus-visible,
+.behanceLink:focus-visible {
+  outline: 2px solid #4b741f;
+  outline-offset: 5px;
+}
+
+.featuredWork .backgroundShape,
+.featuredWork .architectureImage,
+.featuredWork .darkSquare,
+.featuredWork .sparkle,
+.workIntro,
+.caseStudyDetails,
+.caseStudyActions {
+  transition-property: opacity, transform;
+  transition-duration: 0.8s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.projectCard {
+  transition:
+    opacity 0.8s ease,
+    transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.featuredWork:not(.inView) .backgroundShape,
+.featuredWork:not(.inView) .architectureImage,
+.featuredWork:not(.inView) .darkSquare,
+.featuredWork:not(.inView) .sparkle,
+.featuredWork:not(.inView) .workIntro,
+.featuredWork:not(.inView) .caseStudyDetails,
+.featuredWork:not(.inView) .caseStudyActions,
+.olderWorks:not(.inView) .projectCard {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.featuredWork.inView .architectureImage {
+  transition-delay: 0.1s;
+}
+
+.featuredWork.inView .darkSquare {
+  transition-delay: 0.3s;
+}
+
+.featuredWork.inView .sparkle {
+  transition-delay: 0.4s;
+}
+
+.featuredWork.inView .workIntro {
+  transition-delay: 0.15s;
+}
+
+.featuredWork.inView .caseStudyDetails {
+  transition-delay: 0.25s;
+}
+
+.featuredWork.inView .caseStudyActions {
+  transition-delay: 0.35s;
+}
+
+.featuredVisual:hover .backgroundShape,
+.featuredVisual:hover .architectureImage,
+.featuredVisual:hover .darkSquare,
+.featuredVisual:hover .sparkle,
+.featuredVisual:focus-visible .backgroundShape,
+.featuredVisual:focus-visible .architectureImage,
+.featuredVisual:focus-visible .darkSquare,
+.featuredVisual:focus-visible .sparkle {
+  transition-delay: 0s;
+}
+
+.workCopy:hover .workTitle {
+  color: #4b741f;
+  transform: translateX(6px);
+}
+
+@media (max-width: 800px) {
+  .selectedWork {
+    padding: 56px 0 68px;
+  }
+
+  .featuredWork {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .featuredVisual {
+    width: min(100%, 440px);
+    justify-self: center;
+  }
+
+  .architectureImage {
+    top: 8%;
+    left: 8%;
+    width: 84%;
+    height: 84%;
+  }
+
+  .workDetails {
+    gap: 24px;
+  }
+
+  .projectGrid {
+    grid-auto-columns: clamp(200px, 31vw, 250px);
+    gap: 40px 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  .selectedWork {
+    width: min(100% - 32px, 1180px);
+    padding: 48px 0 60px;
+  }
+
+  .heading {
+    margin-bottom: 28px;
+  }
+
+  .worksList {
+    gap: 28px;
+  }
+
+  .workOverview {
+    gap: 12px;
+  }
+
+  .externalLink {
+    width: 54px;
+    height: 54px;
+  }
+
+  .externalLink img {
+    width: 54px;
+    height: 54px;
+  }
+
+  .caseStudyActions {
+    gap: 11px;
+  }
+
+  .caseStudyDetails {
+    grid-template-columns: 1fr;
+    gap: 17px;
+  }
+
+  .projectGrid {
+    grid-auto-columns: minmax(190px, 62vw);
+    grid-template-rows: minmax(160px, auto);
+    gap: 32px 16px;
+  }
+
+  .olderWorkHeading {
+    align-items: flex-end;
+  }
+
+  .navButton { width: 32px; height: 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selectedWork *,
+  .selectedWork *::before,
+  .selectedWork *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .featuredWork:not(.inView) .backgroundShape,
+  .featuredWork:not(.inView) .architectureImage,
+  .featuredWork:not(.inView) .darkSquare,
+  .featuredWork:not(.inView) .sparkle,
+  .featuredWork:not(.inView) .workIntro,
+  .featuredWork:not(.inView) .caseStudyDetails,
+  .featuredWork:not(.inView) .caseStudyActions,
+  .olderWorks:not(.inView) .projectCard {
+    opacity: 1;
+    transform: none;
+  }
+
+  .projectViewport {
+    scroll-behavior: auto;
+  }
+}

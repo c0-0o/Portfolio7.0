@@ -1,0 +1,414 @@
+/* ── tokens ── */
+.root {
+  --lime: #adeb66;
+  --lime-deep: #4b741f;
+  --ink: #141712;
+  --paper: #fcfdf8;
+  --muted: #62695c;
+  --line: #dde2d6;
+  --soft: #bcc4b5;
+  --font-body: var(--font-dm-sans), "DM Sans", Helvetica, Arial, sans-serif;
+  --font-display: var(--font-lilita-one), "Lilita One", Helvetica, Arial, sans-serif;
+  --gap-nav: clamp(20px, 2.5vw, 36px);
+
+  --pad-x: clamp(16px, 5vw, 72px);
+
+  position: relative;
+  z-index: 50;
+  overflow: visible;
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop [data-magnetic-target="wordmark"],
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop .linkWrap,
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop :global(.nav-contact-button),
+:global(body:not(:has(.portfolio-intro[data-active]))) .mobile > a,
+:global(body:not(:has(.portfolio-intro[data-active]))) .mobile .menuBtn {
+  animation: nav-item-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop .linkWrap:nth-child(1) {
+  animation-delay: 40ms;
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop .linkWrap:nth-child(2) {
+  animation-delay: 90ms;
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop .linkWrap:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .desktop :global(.nav-contact-button) {
+  animation-delay: 180ms;
+}
+
+:global(body:not(:has(.portfolio-intro[data-active]))) .mobile .menuBtn {
+  animation-delay: 70ms;
+}
+
+@keyframes nav-item-enter {
+  from {
+    opacity: 0;
+    translate: 0 -16px;
+    scale: 0.94;
+  }
+  72% {
+    opacity: 1;
+    translate: 0 2px;
+    scale: 1.025;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(body:not(:has(.portfolio-intro[data-active]))) .desktop [data-magnetic-target="wordmark"],
+  :global(body:not(:has(.portfolio-intro[data-active]))) .desktop .linkWrap,
+  :global(body:not(:has(.portfolio-intro[data-active]))) .desktop :global(.nav-contact-button),
+  :global(body:not(:has(.portfolio-intro[data-active]))) .mobile > a,
+  :global(body:not(:has(.portfolio-intro[data-active]))) .mobile .menuBtn {
+    animation: none;
+  }
+}
+
+/* route change progress bar */
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--lime);
+  transform-origin: 0 50%;
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* ── bars ── */
+.desktop {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 100px;
+  padding: 0;
+  position: relative;
+}
+.mobile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0;
+  position: relative;
+}
+@media (min-width: 820px) {
+  .desktop {
+    display: flex;
+  }
+  .mobile {
+    display: none;
+  }
+}
+
+.logoLink {
+  display: inline-flex;
+  line-height: 0;
+}
+.logo {
+  height: 64px;
+  width: auto;
+  aspect-ratio: 0.67;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--gap-nav);
+}
+.root :global(.nav-contact-button) :global(.mbc-cat) {
+  scale: 0.85;
+  transform-origin: center bottom;
+}
+.links {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-nav);
+}
+.linkWrap {
+  position: relative;
+  display: inline-flex;
+}
+.root .link {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: normal;
+  text-decoration: none;
+  padding: 4px 0;
+  transition: color 0.2s;
+}
+.root .link:hover {
+  color: var(--ink);
+}
+.root .linkActive {
+  color: var(--ink);
+  font-weight: 500;
+}
+.indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--lime);
+}
+.root .link:focus-visible,
+.root .logoLink:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* ── menu / close control ── */
+.menuBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-body);
+  -webkit-tap-highlight-color: transparent;
+}
+.menuBtn:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 4px;
+  border-radius: 100px;
+}
+.menuLabel {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: normal;
+}
+.icon {
+  display: block;
+  width: 44px;
+  height: 44px;
+  overflow: visible;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.iconRing {
+  stroke: var(--line);
+  transition: stroke 0.2s, fill 0.2s;
+}
+.menuBtn:hover .iconRing {
+  stroke: var(--ink);
+}
+.menuBtn:active .iconRing {
+  fill: rgba(173, 235, 102, 0.28);
+}
+.line {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s;
+}
+.menuBtn:hover .l1 {
+  transform: translateY(-1px);
+}
+.menuBtn:hover .l3 {
+  transform: translateY(1px);
+}
+.iconOpen .l1,
+.menuBtn:hover .iconOpen .l1 {
+  transform: translateY(5.834px) rotate(45deg);
+}
+.iconOpen .l2 {
+  opacity: 0;
+  transform: scaleX(0);
+}
+.iconOpen .l3,
+.menuBtn:hover .iconOpen .l3 {
+  transform: translateY(-5.834px) rotate(-45deg);
+}
+.menuBtn:hover .iconOpen {
+  transform: rotate(90deg);
+}
+
+/* ── mobile overlay ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.overlayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  height: 80px;
+  padding: 0 24px;
+}
+.overlayContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.whereTo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  background: var(--lime);
+}
+.whereLabel {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 15px;
+}
+.root .homeLink {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.root .row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: clamp(65px, 16.7vw, 104px);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.row:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: -2px;
+}
+.rowLabel {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 10.8vw, 72px);
+  font-weight: 400;
+  line-height: normal;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rowLabelSm {
+  font-size: clamp(34px, 9.75vw, 66px);
+}
+.rowArrow {
+  font-size: 28px;
+  line-height: normal;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s;
+}
+.rowActive .rowArrow {
+  color: var(--lime-deep);
+}
+.row:hover .rowLabel,
+.row:focus-visible .rowLabel {
+  transform: translateX(8px);
+}
+.row:hover .rowArrow,
+.row:focus-visible .rowArrow {
+  transform: translate(3px, -3px);
+}
+
+.contact {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 242px;
+  padding: 28px 24px;
+  background: var(--ink);
+}
+.contactHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.root .contactTitle {
+  color: var(--lime);
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: normal;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.contactArrow {
+  color: var(--lime);
+  font-size: 32px;
+  line-height: normal;
+}
+.root .emailLink {
+  display: block;
+  width: 100%;
+  padding: 0;
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 16px;
+  text-decoration: underline;
+}
+.social {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  color: var(--soft);
+  font-size: 13px;
+  line-height: 26px;
+}
+.social a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.social a:hover {
+  color: var(--lime);
+}
+.sep {
+  margin: 0 14px;
+}
+.copyright {
+  margin: 0;
+  color: var(--soft);
+  font-size: 10px;
+}

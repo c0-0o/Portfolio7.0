@@ -435,7 +435,7 @@ export function getMaterialFlowWidthScale(type: TextureType): number {
   const scales: Record<TextureType, number> = {
     grain: 0.72,
     fiber: 0.62,
-    silk: 0.2,
+    silk: 0.3,
     rope: 0.3,
     beads: 0.42,
     metal: 0.36,

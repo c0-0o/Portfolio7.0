@@ -80,8 +80,10 @@ function sanitizeCustomPath(v: unknown, from: Point, to: Point): CustomPath {
     };
   });
   const aspectRatio = Number(o.aspectRatio);
+  const curveSmoothing = clamp01(o.curveSmoothing, 0);
   return {
     points: points.length >= 2 ? points : [{ id: "path-start", ...from }, { id: "path-end", ...to }],
+    curveSmoothing,
     closedJoint: o.closedJoint === "breakable" ? "breakable" : "connected",
     ...(Number.isFinite(aspectRatio) && aspectRatio > 0 ? { aspectRatio } : {}),
   };
@@ -326,6 +328,7 @@ function sanitizeFlow(v: unknown): FlowConfig {
   return {
     enabled: bool(o.enabled, DEFAULT_FLOW.enabled),
     effectType,
+    pulseRhythm: o.pulseRhythm === "heartbeat" ? "heartbeat" : "continuous",
     preset: typeof o.preset === "string" && o.preset.length <= 80 ? o.preset : null,
     speed: Math.min(8, Math.max(0, num(o.speed, DEFAULT_FLOW.speed))),
     colorSpeed: Math.min(4, Math.max(0, num(o.colorSpeed, DEFAULT_FLOW.colorSpeed))),

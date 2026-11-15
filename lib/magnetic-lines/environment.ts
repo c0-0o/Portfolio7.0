@@ -222,6 +222,18 @@ export function smoothAirflowPath(path: Point[]): Point[] {
   return smoothed;
 }
 
+function getAmbientAirflow(point: Point, viewport: { width: number; height: number }, time: number, speed: number): Point {
+  const x = point.x / Math.max(1, viewport.width);
+  const y = point.y / Math.max(1, viewport.height);
+  const drift = time * (0.35 + Math.max(0, speed) * 1.6);
+  const firstWave = 2 * Math.PI * (x * 0.38 + y * 0.2) + drift * 0.95;
+  const secondWave = 2 * Math.PI * (x * -0.15 + y * 0.42) - drift * 0.7 + 1.7;
+  return {
+    x: 0.34 * Math.cos(firstWave) - 0.46 * Math.sin(secondWave),
+    y: -0.63 * Math.cos(firstWave) + 0.21 * Math.sin(secondWave),
+  };
+}
+
 function getAirflowSegments(
   environment: EnvironmentConfig,
   viewport: { width: number; height: number },
@@ -263,12 +275,17 @@ export function createAirflowField(
   minimumRadiusPx = 0,
 ): ((point: Point, lineTangent: Point, time: number, materialResponse: number) => Point) | null {
   const paths = environment.airflowPaths ?? [environment.airflowPath];
-  if (!environment.enabled || !environment.airflowEnabled || !paths.some((path) => path.length >= 2) || environment.airflowStrength <= 0) return null;
+  const hasGuidePaths = paths.some((path) => path.length >= 2);
+  const ambientOnly = environment.airflowBehavior === "random" && !hasGuidePaths;
+  if (!environment.enabled || !environment.airflowEnabled || (!hasGuidePaths && !ambientOnly) || environment.airflowStrength <= 0) return null;
 
   const minDim = Math.min(viewport.width, viewport.height) || 1;
-  const segments = getAirflowSegments(environment, viewport);
-  if (segments.length === 0) return null;
-  const totalLength = segments[segments.length - 1].lengthBefore + segments[segments.length - 1].length;
+  const segments = ambientOnly ? [] : getAirflowSegments(environment, viewport);
+  if (!ambientOnly && segments.length === 0) return null;
+  const lastSegment = segments[segments.length - 1];
+  const totalLength = lastSegment ? lastSegment.lengthBefore + lastSegment.length : 0;
+  let cachedGustTime = Number.NaN;
+  let cachedGustEnvelope = 1;
 
   return (point, lineTangent, time, materialResponse) => {
     let closestDistanceSquared = Number.POSITIVE_INFINITY;
@@ -291,19 +308,32 @@ export function createAirflowField(
       }
     }
 
-    if (!flowDirection) return { x: 0, y: 0 };
-    const influence = falloff(Math.sqrt(closestDistanceSquared), radius, 0.78);
-    if (influence <= 0) return { x: 0, y: 0 };
-
     const normal = perpendicular(lineTangent);
-    const crossFlow = flowDirection.x * normal.x + flowDirection.y * normal.y;
-    const behaviorEnvelope = getAirflowBehaviorEnvelope(
-      environment.airflowBehavior,
-      time,
-      environment.airflowSpeed,
-      coherent ? 0.5 : pathPosition,
-    );
-    const displacement = minDim * 0.08 * environment.airflowStrength * materialResponse * influence * crossFlow * behaviorEnvelope;
+    let displacement = 0;
+    if (flowDirection) {
+      const influence = falloff(Math.sqrt(closestDistanceSquared), radius, 0.78);
+      const crossFlow = flowDirection.x * normal.x + flowDirection.y * normal.y;
+      const behaviorEnvelope = getAirflowBehaviorEnvelope(
+        environment.airflowBehavior,
+        time,
+        environment.airflowSpeed,
+        coherent ? 0.5 : pathPosition,
+      );
+      displacement += minDim * 0.08 * environment.airflowStrength * materialResponse * influence * crossFlow * behaviorEnvelope;
+    }
+
+    if (environment.airflowBehavior === "random") {
+      const ambientWind = getAmbientAirflow(point, viewport, time, environment.airflowSpeed);
+      const ambientCrossFlow = ambientWind.x * normal.x + ambientWind.y * normal.y;
+      if (cachedGustTime !== time) {
+        cachedGustTime = time;
+        cachedGustEnvelope = getAirflowBehaviorEnvelope("random", time, environment.airflowSpeed, 0.5);
+      }
+      displacement += minDim * 0.09 * environment.airflowStrength * materialResponse *
+        ambientCrossFlow * (0.72 + 0.22 * cachedGustEnvelope);
+    }
+
+    if (displacement === 0) return { x: 0, y: 0 };
     return { x: normal.x * displacement, y: normal.y * displacement };
   };
 }

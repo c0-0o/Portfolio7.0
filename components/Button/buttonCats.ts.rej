@@ -1,0 +1,9 @@
+--- components/Button/buttonCats.ts
++++ components/Button/buttonCats.ts
+@@ -52,3 +52,6 @@
+ export const CATS = V;
+ export const SCRATCH_OVERLAY = SCR;
+ export const loadingCatMarkup = LD;
++export const CATCH_OVERLAY = `<g class="mbc-catch-follow"><path d="M-34 30Q-18 10 0 0" fill="none" stroke="#141712" stroke-width="9" stroke-linecap="round"/><path d="M-34 30Q-18 10 0 0" fill="none" stroke="#ADEB66" stroke-width="1.5" stroke-linecap="round"/><g class="mbc-catch-paw"><ellipse cx="0" cy="0" rx="8" ry="7" fill="#141712" stroke="#ADEB66" stroke-width="1.5"/><circle cx="-5" cy="-6" r="3" fill="#141712" stroke="#ADEB66" stroke-width="1"/><circle cx="1" cy="-8" r="3" fill="#141712" stroke="#ADEB66" stroke-width="1"/><circle cx="6" cy="-5" r="3" fill="#141712" stroke="#ADEB66" stroke-width="1"/></g></g>`;
++export const PAW_TARGET_OVERLAY = `<g class="mbc-paw-follow"><g class="mbc-paw-stamp"><ellipse cx="0" cy="0" rx="10" ry="8" fill="#141712" stroke="#ADEB66" stroke-width="1.6"/><circle cx="-7" cy="-7" r="3.2" fill="#141712" stroke="#ADEB66" stroke-width="1.3"/><circle cx="-2" cy="-10" r="3.2" fill="#141712" stroke="#ADEB66" stroke-width="1.3"/><circle cx="4" cy="-9" r="3.2" fill="#141712" stroke="#ADEB66" stroke-width="1.3"/><circle cx="9" cy="-5" r="3.2" fill="#141712" stroke="#ADEB66" stroke-width="1.3"/></g></g>`;
++export const ARROW_OVERLAY = `<g class="mbc-arrow-follow"><image class="mbc-arrow-target" href="/cursorsvggs/pointer.svg" x="-2" y="-1" width="28" height="28"/></g>`;

@@ -272,6 +272,28 @@ test("random airflow varies smoothly with irregular phase durations", () => {
   assert.ok(Math.max(...values.slice(1).map((value, index) => Math.abs(value - values[index]))) < 0.05);
 });
 
+test("random airflow creates a smooth drifting field beyond its authored breeze paths", () => {
+  const environment = {
+    ...baseEnvironment,
+    airflowBehavior: "random",
+    airflowPath: [],
+    airflowPaths: [],
+    airflowRadii: [],
+    airflowSpeed: 0.72,
+    airflowStrength: 0.38,
+  };
+  const airflow = createAirflowField(environment, { width: 1000, height: 800 });
+  const point = { x: 420, y: 650 };
+  const tangent = { x: 1, y: 0 };
+  const first = airflow(point, tangent, 1.5, 1);
+  const nearby = airflow({ x: point.x + 1, y: point.y }, tangent, 1.5, 1);
+  const later = airflow(point, tangent, 2.5, 1);
+
+  assert.ok(Math.hypot(first.x, first.y) > 2, "the ambient field remains active without guide paths");
+  assert.ok(Math.hypot(first.x - nearby.x, first.y - nearby.y) < 0.2, "nearby samples move continuously");
+  assert.ok(Math.hypot(first.x - later.x, first.y - later.y) > 0.5, "the ambient field visibly drifts over time");
+});
+
 test("airflow drawing paths are smoothly interpolated and legacy paths stay bounded", () => {
   const drawnPath = [{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, { x: 1, y: 0 }];
   const smoothPath = smoothAirflowPath(drawnPath);
@@ -523,6 +545,21 @@ test("cursor influence bends a gravity-sagged line while keeping gravity pins fi
   assert.ok(result.points[12].y < baseline.points[12].y);
   assert.equal(result.points[0].y, baseline.points[0].y);
   assert.equal(result.points.at(-1).y, baseline.points.at(-1).y);
+
+  const activeCursorOffset = Math.max(...state.cursorOffset.map(({ x, y }) => Math.hypot(x, y)));
+  for (let frame = 36; frame < 60; frame++) {
+    computeLine(
+      config,
+      scene,
+      state,
+      frame / 60,
+      1 / 60,
+      { width: 1000, height: 800 },
+      { x: 500, y: 180, active: false },
+    );
+  }
+  const releasedCursorOffset = Math.max(...state.cursorOffset.map(({ x, y }) => Math.hypot(x, y)));
+  assert.ok(releasedCursorOffset < activeCursorOffset, "cursor influence eases away after the pointer leaves");
 });
 
 test("rigid custom shapes keep their exact contour despite motion and interactive forces", () => {

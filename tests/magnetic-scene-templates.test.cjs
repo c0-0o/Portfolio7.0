@@ -17,6 +17,7 @@ require.extensions[".ts"] = (module, filename) => {
 
 const { DEFAULT_SCENE, applyScenePreset } = require("../lib/magnetic-lines/defaultScene.ts");
 const { ORGANIC_ATMOSPHERIC_TEMPLATES, SCENE_TEMPLATE_CATEGORIES } = require("../lib/magnetic-lines/sceneTemplates.ts");
+const { getHeartbeatCycles } = require("../lib/magnetic-lines/engine/flowEngine.ts");
 const { resolveLineConfig } = require("../lib/magnetic-lines/engine/resolveConfig.ts");
 const { sanitizeSceneConfig } = require("../lib/magnetic-lines/editor/validate.ts");
 const { getTextureLayerStrokeWidth, getTextureStrokeLayers } = require("../lib/magnetic-lines/texture.ts");
@@ -38,12 +39,13 @@ function installStorage(initial = {}) {
   return values;
 }
 
-test("the bundled scene catalog contains 32 unique, valid templates with four per category", () => {
-  assert.equal(ORGANIC_ATMOSPHERIC_TEMPLATES.length, 32);
-  assert.equal(new Set(ORGANIC_ATMOSPHERIC_TEMPLATES.map((template) => template.id)).size, 32);
+test("the bundled scene catalog contains 35 unique, valid templates", () => {
+  assert.equal(ORGANIC_ATMOSPHERIC_TEMPLATES.length, 35);
+  assert.equal(new Set(ORGANIC_ATMOSPHERIC_TEMPLATES.map((template) => template.id)).size, 35);
 
   for (const category of SCENE_TEMPLATE_CATEGORIES) {
-    assert.equal(ORGANIC_ATMOSPHERIC_TEMPLATES.filter((template) => template.category === category).length, 4, category);
+    const expectedCount = category === "Organic & Nature" ? 6 : category === "Geometric & Structural" ? 5 : 4;
+    assert.equal(ORGANIC_ATMOSPHERIC_TEMPLATES.filter((template) => template.category === category).length, expectedCount, category);
   }
 
   for (const template of ORGANIC_ATMOSPHERIC_TEMPLATES) {
@@ -55,6 +57,101 @@ test("the bundled scene catalog contains 32 unique, valid templates with four pe
     assert.equal(new Set(pointIds).size, pointIds.length, `${template.name}: point IDs`);
     assert.ok(config.lines.every((line) => line.customPath.points.every((point) => point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1)), template.name);
   }
+});
+
+test("EDITORIAL MAGNETIC ARCHITECTURE is an editable ten-line homepage scene with a registered CTA target", () => {
+  const template = ORGANIC_ATMOSPHERIC_TEMPLATES.find(({ id }) => id === "editorial-magnetic-architecture");
+  assert.ok(template);
+  assert.equal(template.name, "EDITORIAL MAGNETIC ARCHITECTURE");
+  assert.equal(template.config.lines.length, 10);
+  assert.equal(template.config.lines.filter((line) => line.texture.enabled && line.texture.type === "silk").length, 1);
+  assert.ok(template.config.lines.every((line) => line.appearance.width <= 0.9 || line.id.endsWith("line-10")));
+  assert.ok(template.config.lines.every((line) => line.flow.effectType !== "energy-pulse"));
+  const focalLine = template.config.lines.find((line) => line.magnet.targetId === "portfolio-work-cta");
+  assert.ok(focalLine?.flow.enabled);
+  assert.equal(template.config.targets[0].lineIds?.[0], focalLine.id);
+  assert.deepEqual(template.config.targets[0].lineTriggers?.[focalLine.id]?.magnet, ["hover", "focus", "touch"]);
+  assert.ok(template.config.lines.every((line) => !line.id.includes("opening-")));
+});
+
+test("Organic Lime Filaments keeps the title and loader clear while using restrained supported effects", () => {
+  const template = ORGANIC_ATMOSPHERIC_TEMPLATES.find(({ id }) => id === "opening-organic-lime-filaments");
+  assert.ok(template);
+  assert.equal(template.config.lines.length, 6);
+  assert.ok(template.config.lines.every((line) => line.customPath.curveSmoothing >= 0.9));
+
+  const points = template.config.lines.flatMap((line) => line.customPath.points);
+  assert.ok(points.every((point) => !(point.x > 0.36 && point.x < 0.64 && point.y > 0.25 && point.y < 0.72)));
+  assert.equal(template.config.lines.filter((line) => line.texture.enabled && line.texture.type === "silk").length, 2);
+  assert.equal(template.config.lines.filter((line) => line.flow.enabled).length, 1);
+  assert.ok(template.config.lines.filter((line) => line.cursorInfluence.enabled).every((line) => line.cursorInfluence.maxDeformation <= 0.016));
+  assert.equal(template.config.global.environment.airflowBehavior, "gentle");
+  assert.equal(template.config.global.environment.lightColor, "#D8F0C2");
+});
+
+test("the luminous opening preset layers silk, dotted guides, cursor-responsive pulses, and breathing nodes", () => {
+  const template = ORGANIC_ATMOSPHERIC_TEMPLATES.find(({ id }) => id === "opening-luminous-silk-filaments");
+  assert.ok(template);
+  assert.equal(template.config.lines.length, 17);
+  assert.ok(template.config.lines.every((line) => line.customPath.curveSmoothing === 1));
+  assert.equal(template.config.lines.filter((line) => line.texture.enabled && line.texture.type === "silk").length, 6);
+  assert.equal(template.config.lines.filter((line) => line.texture.enabled && line.texture.type === "fiber").length, 4);
+  assert.equal(template.config.lines.filter((line) => line.id.includes("-node-")).length, 3);
+  const filaments = template.config.lines.filter((line) => !line.id.includes("-node-"));
+  const flowingSilk = filaments.filter((line) => line.texture.enabled && line.texture.type === "silk");
+  assert.equal(filaments.length, 14);
+  assert.equal(flowingSilk.length, 6);
+  assert.ok(template.config.lines.filter((line) => line.id.includes("-node-")).every((line) => !line.flow.enabled));
+  assert.ok(filaments.every((line) =>
+    line.flow.enabled &&
+    line.flow.effectType === "energy-pulse" &&
+    line.flow.pulseRhythm === "heartbeat" &&
+    line.flow.streamCount === 1 &&
+    line.flow.intensity === 0.88 &&
+    line.flow.width <= 1.2 &&
+    line.flow.coreWidth === 1.5 &&
+    line.flow.glowWidth === 4.4 &&
+    line.flow.opacity === 0.97 &&
+    line.flow.speed === 0.16 &&
+    line.flow.pulseWidth === 0.06 &&
+    line.flow.layers.current === false &&
+    line.flow.coreColor === "#7AD321" &&
+    line.flow.glowColor === "#A6E96B"
+  ));
+  assert.ok(flowingSilk.filter((line) => ["line-01", "line-05", "line-09", "line-12"].some((suffix) => line.id.endsWith(suffix)))
+    .every((line) => line.texture.intensity >= 0.8));
+  assert.ok(filaments.every((line) => {
+    const first = line.customPath.points[0];
+    const last = line.customPath.points.at(-1);
+    const direction = first.x > 0.5 && last.x > first.x ? "reverse" : "forward";
+    const phaseAtReveal = ((line.flow.phase + (direction === "reverse" ? -1 : 1) * getHeartbeatCycles(line.startDelay, line.flow.speed)) % 1 + 1) % 1;
+    const expectedPhase = 0;
+    const phaseDistance = Math.min(phaseAtReveal, 1 - phaseAtReveal);
+    return line.flow.direction === direction && phaseDistance < 1e-8;
+  }), "each flash starts at its outer endpoint as the filament reveals");
+  assert.ok(template.config.lines.filter((line) => line.cursorInfluence.enabled).every((line) => line.cursorInfluence.maxDeformation <= 0.007));
+
+  const points = template.config.lines.filter((line) => !line.id.includes("-node-")).flatMap((line) => line.customPath.points);
+  assert.ok(points.every((point) => !(point.x > 0.4 && point.x < 0.6 && point.y > 0.25 && point.y < 0.72)));
+  assert.equal(template.config.global.environment.airflowBehavior, "random");
+  assert.equal(template.config.global.environment.airflowPaths.length, 0);
+  assert.equal(template.config.global.environment.airflowEnabled, true);
+  assert.equal(template.config.global.environment.airflowStrength, 0.12);
+  assert.ok(template.config.global.environment.airflowSpeed >= 0.28 && template.config.global.environment.airflowSpeed <= 0.35);
+  assert.ok(template.config.lines.filter((line) => !line.id.includes("-node-")).every((line) => line.motion.amplitude <= 0.003));
+  assert.ok(template.config.lines.filter((line) => !line.id.includes("-node-")).some((line) => line.motion.amplitude >= 0.0028));
+});
+
+test("opening lines unfurl like growing stems in slow waves with a one-second beat between groups", () => {
+  const styles = fs.readFileSync("app/globals.css", "utf8");
+  const renderer = fs.readFileSync("lib/magnetic-lines/MagneticBackgroundLines.tsx", "utf8");
+
+  assert.match(styles, /opening-line-enter 1\.65s cubic-bezier\(\.22, 1, \.36, 1\) calc\(var\(--opening-order, 0\) \* 1s\)/);
+  assert.match(styles, /opening-line-draw 1\.7s cubic-bezier\(\.2, \.8, \.2, 1\) calc\(var\(--opening-order, 0\) \* 1s\)/);
+  assert.match(styles, /transform-origin: center bottom/);
+  assert.match(styles, /translateY\(3px\) scaleY\(\.94\)/);
+  assert.match(renderer, /Math\.ceil\(visibleLines\.length \/ 3\) - 1\) \* 1_000 \+ 2_000/);
+  assert.match(renderer, /Math\.ceil\(visibleLines\.length \/ 3\)}s/);
 });
 
 test("template line features survive global config resolution", () => {

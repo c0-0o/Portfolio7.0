@@ -33,6 +33,8 @@ export interface PathPoint extends Point {
 
 export interface CustomPath {
   points: PathPoint[];
+  /** 0 keeps authored corners; 1 samples a smooth Catmull-Rom curve through them. */
+  curveSmoothing?: number;
   /** Source viewport ratio for generated shapes that must retain their proportions. */
   aspectRatio?: number;
   closedJoint?: "connected" | "breakable";
@@ -241,6 +243,7 @@ export interface FlowLayerConfig {
 export interface FlowConfig {
   enabled: boolean;
   effectType: FlowEffectType;
+  pulseRhythm: "continuous" | "heartbeat";
   preset: string | null;
   speed: number;
   colorSpeed: number;

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 0 210 148" width="420" height="296" class="mbc-cat mbc-v-ld" style="--cat:#141712;--lime:#ADEB66;--d:7000ms;--bd:-1.2s" role="img" aria-label="Loading with tail">
+<title>Loading with tail</title>
+<defs><clipPath id="mbc-clip"><rect x="-60" y="-60" width="320" height="160"/></clipPath></defs>
+<style>
+.mbc-k{fill:var(--cat)}.mbc-l{fill:none;stroke:var(--lime);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mbc-sp{fill:none;stroke:var(--cat);stroke-width:1.8;stroke-linecap:round;animation:mbc-bl3 3.2s infinite}
+.mbc-tp{fill:none;stroke:var(--cat);stroke-width:9;stroke-linecap:round}
+.mbc-z{font:800 11px 'DM Sans',sans-serif;fill:#8fcf3f;animation:mbc-zz 2s infinite both}
+.mbc-ex,.mbc-mw{font:800 20px 'DM Sans',sans-serif;fill:var(--cat)}.mbc-mw{font-size:22px}
+.mbc-h,.mbc-pw,.mbc-ee,.mbc-br{transform-box:fill-box;transform-origin:50% 100%}.mbc-ee,.mbc-mw,.mbc-sp,.mbc-ex{transform-box:fill-box;transform-origin:center}
+.mbc-tw,.mbc-pl,.mbc-pr{transform-box:view-box}.mbc-tw{transform-origin:150px 100px}.mbc-pl{transform-origin:56px 98px}.mbc-pr{transform-origin:134px 98px}
+.mbc-ee{animation:mbc-blink3 5s infinite;animation-delay:var(--bd,0s)}.mbc-pu{animation:mbc-look3 7s infinite;animation-delay:var(--bd,0s)}
+.mbc-in{animation:mbc-enter .8s both,mbc-exit .45s ease-in calc(var(--d) - .45s) forwards}
+.mbc-v-walk .mbc-in{animation-name:mbc-enterW,mbc-exitW}
+.mbc-v-eyes .mbc-in{animation-delay:1.7s,calc(var(--d) - .45s)}
+.mbc-v-surp .mbc-in,.mbc-v-atk .mbc-in,.mbc-v-ld .mbc-in{animation:none}
+.mbc-v-popup .mbc-h,.mbc-v-eyes .mbc-h,.mbc-v-paw .mbc-h{animation:mbc-sway 3.6s ease-in-out infinite}
+.mbc-v-peek .mbc-h{animation:mbc-peekl 4.4s ease-in-out infinite}
+.mbc-v-walk .mbc-h{animation:mbc-tilt 3.8s ease-in-out infinite}.mbc-v-walk .mbc-pu{animation:none;transform:translateX(1.8px)}
+.mbc-v-bounce .mbc-h{animation:mbc-bnc 1.3s ease-in-out infinite}
+.mbc-v-paw .mbc-pw{animation:mbc-tapl 3.2s ease-in-out infinite}.mbc-v-paw .mbc-pp{animation:mbc-pps 3.2s infinite}
+.mbc-v-sleep .mbc-br{animation:mbc-breathe 3.4s ease-in-out infinite}.mbc-v-sleep .mbc-h{animation:mbc-breathe2 3.4s ease-in-out infinite}.mbc-v-sleep .mbc-tw{animation:mbc-swish 3s ease-in-out infinite alternate}
+.mbc-v-flat .mbc-h{animation:mbc-flatin .4s .9s both ease-in,mbc-flatl 2.2s 1.3s ease-in-out infinite}
+.mbc-v-tail .mbc-tw{animation:mbc-wag .55s ease-in-out infinite alternate}
+.mbc-v-eyes .mbc-ey{animation:mbc-eyeph 1.7s both}
+.mbc-v-surp .mbc-h{animation:mbc-surp var(--d) both}.mbc-v-surp .mbc-ex{animation:mbc-pop var(--d) both}.mbc-v-surp .mbc-pa{animation:mbc-pa2 var(--d) both}
+.mbc-v-atk .mbc-h{animation:mbc-atkh var(--d) both}.mbc-v-atk .mbc-gp{animation:mbc-gp var(--d) both}.mbc-v-atk .mbc-pl{animation:mbc-swl .38s ease-in-out .5s 6 alternate both}.mbc-v-atk .mbc-pr{animation:mbc-swr .38s ease-in-out .7s 6 alternate both}.mbc-v-atk .mbc-mw,.mbc-v-atk .mbc-sp{animation:mbc-pop2 var(--d) both}.mbc-v-atk .mbc-tw{animation:mbc-wag .35s ease-in-out infinite alternate}
+.mbc-v-ld .mbc-h{animation:mbc-bob 1.4s ease-in-out infinite}.mbc-v-ld .mbc-tw{animation:mbc-wag .6s ease-in-out infinite alternate}
+.mbc-v-ld .mbc-ee{animation:mbc-blink2 3.2s infinite}.mbc-v-ld .mbc-pu{animation:mbc-look2 4s infinite}
+.mbc-cat.mbc-rx .mbc-h{animation:mbc-hop .85s both!important}.mbc-cat.mbc-rx .mbc-tw{animation:mbc-wag .1s ease-in-out infinite alternate!important}
+.mbc-cat.mbc-fl .mbc-in{animation:mbc-flee .35s ease-in both!important}
+.mbc-cat.mbc-fl .mbc-sp,.mbc-cat.mbc-fl .mbc-z,.mbc-cat.mbc-fl .mbc-pp{animation:none;opacity:0}
+@keyframes mbc-enter{0%{transform:translateY(48px)}55%{transform:translateY(-7px) scale(.98,1.04)}75%{transform:translateY(1px) scale(1.02,.98)}100%{transform:none}}
+@keyframes mbc-exit{to{transform:translateY(64px)}}
+@keyframes mbc-enterW{0%{transform:translateX(-120px) rotate(-12deg)}55%{transform:translateX(7px) rotate(3deg)}78%{transform:translateX(-2px)}100%{transform:none}}
+@keyframes mbc-exitW{to{transform:translateX(-120px) rotate(-12deg)}}
+@keyframes mbc-sway{0%,100%{transform:rotate(-1.5deg)}50%{transform:rotate(1.5deg) translateY(-1px)}}
+@keyframes mbc-peekl{0%,100%{transform:none}25%,40%{transform:translateY(-8px)}48%{transform:translateY(-8px) rotate(-3deg)}58%{transform:translateY(-8px) rotate(3deg)}70%{transform:translateY(-2px)}}
+@keyframes mbc-tilt{0%,100%{transform:rotate(1deg)}50%{transform:rotate(7deg)}}
+@keyframes mbc-bnc{0%,100%{transform:none}25%{transform:translateY(-10px) scale(.96,1.06)}50%{transform:scale(1.06,.92)}70%{transform:none}}
+@keyframes mbc-tapl{0%,45%,100%{transform:translateY(2px) rotate(-8deg)}5%,15%,25%,35%{transform:translateY(-6px) rotate(10deg)}10%,20%,30%,40%{transform:translateY(2px) rotate(-8deg)}}
+@keyframes mbc-pps{0%,8%{opacity:0}16%,60%{opacity:1}70%,100%{opacity:0}}
+@keyframes mbc-breathe{50%{transform:scaleY(1.1)}}@keyframes mbc-breathe2{50%{transform:translateY(-1.5px)}}
+@keyframes mbc-swish{from{transform:rotate(-8deg)}to{transform:rotate(10deg)}}
+@keyframes mbc-flatin{to{transform:translateY(10px) scale(1.3,.5)}}
+@keyframes mbc-flatl{0%,100%{transform:translateY(10px) scale(1.3,.5)}50%{transform:translateY(10px) scale(1.27,.55)}}
+@keyframes mbc-eyeph{0%{opacity:0;transform:translateY(12px) scale(.6)}15%{opacity:1;transform:scale(1.1)}25%{transform:none}50%{transform:scaleY(.1)}58%{transform:none}85%{opacity:1}100%{opacity:0}}
+@keyframes mbc-wag{from{transform:rotate(-12deg)}to{transform:rotate(14deg)}}
+@keyframes mbc-bob{50%{transform:translateY(-3px)}}
+@keyframes mbc-zz{0%{opacity:0;transform:translateY(6px)}30%{opacity:1}100%{opacity:0;transform:translateY(-12px)}}
+@keyframes mbc-bl3{0%,10%{opacity:0}15%,30%{opacity:1}35%,60%{opacity:0}65%,80%{opacity:1}85%,100%{opacity:0}}
+@keyframes mbc-blink3{0%,92%,100%{transform:none}95%{transform:scaleY(.1)}}
+@keyframes mbc-blink2{0%,92%,100%{transform:none}96%{transform:scaleY(.1)}}
+@keyframes mbc-look3{0%,20%,100%{transform:none}30%,45%{transform:translateX(-1.6px)}55%,70%{transform:translateX(1.6px)}}
+@keyframes mbc-look2{0%,30%,100%{transform:none}40%,60%{transform:translateX(-1.6px)}70%,90%{transform:translateX(1.6px)}}
+@keyframes mbc-hop{0%{transform:none}25%{transform:translateY(-12px) scale(.95,1.08)}45%{transform:scale(1.07,.9)}65%{transform:translateY(-8px)}85%,100%{transform:none}}
+@keyframes mbc-surp{0%{transform:none}12%{transform:translateY(-16px) scale(1.12,1.18)}40%{transform:translateY(-12px) scale(1.05)}64%{transform:translateY(-12px)}82%,100%{transform:translateY(60px)}}
+@keyframes mbc-pop{0%,8%{transform:scale(0);opacity:0}18%{transform:scale(1.4);opacity:1}28%,62%{transform:none;opacity:1}72%,100%{opacity:0}}
+@keyframes mbc-pop2{0%,8%{transform:scale(0);opacity:0}18%{transform:scale(1.3);opacity:1}26%,72%{transform:none;opacity:1}82%,100%{opacity:0}}
+@keyframes mbc-pa2{0%,70%{transform:none}100%{transform:translateY(10px)}}
+@keyframes mbc-atkh{0%{transform:translateY(22px)}8%{transform:translateY(-8px) scale(1.15,1.2)}14%{transform:scale(1.15)}22%{transform:scale(1.15) rotate(-5deg)}34%{transform:scale(1.15) rotate(5deg)}46%{transform:scale(1.15) rotate(-5deg)}58%{transform:scale(1.15) rotate(4deg)}70%{transform:scale(1.15)}82%{transform:translateY(0)}100%{transform:translateY(60px)}}
+@keyframes mbc-gp{0%{transform:translateY(34px)}8%,84%{transform:none}100%{transform:translateY(60px)}}
+@keyframes mbc-swl{from{transform:rotate(8deg)}to{transform:rotate(-16deg)}}
+@keyframes mbc-swr{from{transform:rotate(-8deg)}to{transform:rotate(16deg)}}
+@keyframes mbc-flee{to{transform:translateY(64px)}}
+.mbc-scr{position:absolute;left:50%;margin-left:-95px;top:-88px;width:190px;height:100px;overflow:visible;pointer-events:none;z-index:4}
+.mbc-mk{fill:none;stroke:#ADEB66;stroke-width:2.2;stroke-linecap:round}.mbc-mk path{stroke-dasharray:1}
+.mbc-rl,.mbc-rr{transform-box:view-box}.mbc-rl{transform-origin:64px 80px}.mbc-rr{transform-origin:126px 80px}
+.mbc-scr.mbc-v-atk{animation:mbc-scrfade var(--d) both}.mbc-v-atk .mbc-gpo{animation:mbc-gp var(--d) both}
+.mbc-v-atk .mbc-rl{animation:mbc-rakeL .3s ease-in .6s 6 both}.mbc-v-atk .mbc-rr{animation:mbc-rakeR .3s ease-in .75s 6 both}
+.mbc-v-atk .mbc-mkl{animation:mbc-mk .3s ease-out .6s 6 both}.mbc-v-atk .mbc-mkr{animation:mbc-mk .3s ease-out .75s 6 both}
+@keyframes mbc-rakeL{0%,100%{transform:translate(0,-4px) rotate(8deg)}40%,55%{transform:translate(-8px,24px) rotate(-10deg)}}
+@keyframes mbc-rakeR{0%,100%{transform:translate(0,-4px) rotate(-8deg)}40%,55%{transform:translate(8px,24px) rotate(10deg)}}
+@keyframes mbc-mk{0%,38%{stroke-dashoffset:1;opacity:0}52%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.85}}
+@keyframes mbc-scrfade{0%,88%{opacity:1}100%{opacity:0}}
+
+@keyframes mbc-cyc{0%{transform:translateY(48px)}10%{transform:translateY(-7px) scale(.98,1.04)}14%{transform:translateY(1px)}17%,88%{transform:none}100%{transform:translateY(64px)}}
+@keyframes mbc-cycW{0%{transform:translateX(-120px) rotate(-12deg)}12%{transform:translateX(7px) rotate(3deg)}17%,88%{transform:none}100%{transform:translateX(-120px) rotate(-12deg)}}
+@keyframes mbc-cycE{0%,24%{transform:translateY(48px)}34%{transform:translateY(-6px)}38%{transform:translateY(1px)}41%,88%{transform:none}100%{transform:translateY(64px)}}
+@keyframes mbc-eyeP{0%{opacity:0;transform:translateY(12px) scale(.6)}4%{opacity:1;transform:scale(1.1)}7%,10%{transform:none}13%{transform:scaleY(.1)}16%{transform:none}21%{opacity:1}24%,100%{opacity:0}}
+@keyframes mbc-flatC{0%,18%{transform:none}24%,100%{transform:translateY(10px) scale(1.3,.5)}60%{transform:translateY(10px) scale(1.27,.55)}}
+</style>
+<g clip-path="url(#mbc-clip)"><g transform="translate(60 56)"><g class="mbc-in"><g class="mbc-h"><path class="mbc-k" d="M3 44L5 6Q6 2 10 4L26 14Q35 12 44 14L60 4Q64 2 65 6L67 44Z"/><g transform="translate(22 26)"><g class="mbc-ee"><circle r="6" fill="#CBEF92" /><g class="mbc-pu"><circle r="4.2" cx=".4" cy=".4" fill="#050604" /><circle r="1.4" cx="-1" cy="-1.4" fill="#fff" /></g></g></g><g transform="translate(48 26)"><g class="mbc-ee"><circle r="6" fill="#CBEF92" /><g class="mbc-pu"><circle r="4.2" cx=".4" cy=".4" fill="#050604" /><circle r="1.4" cx="-1" cy="-1.4" fill="#fff" /></g></g></g></g></g></g><g><ellipse class="mbc-k" cx="66" cy="88" rx="9" ry="6" /><ellipse class="mbc-k" cx="124" cy="88" rx="9" ry="6" /></g><g class="mbc-tw"><path class="mbc-tp" d="M150 100V78Q150 60 134 60Q125 60 126 68"/></g></g><g class="mbc-btn-mock"><rect x="0" y="94" width="190" height="49" rx="24.5" fill="#ADEB66"/><rect x="0" y="91" width="190" height="49" rx="24.5" fill="#141712" stroke="#38442D" stroke-opacity=".6" stroke-width=".65"/><text x="95" y="120" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-weight="700" font-size="14" fill="#FCFDF8">Primary Button</text></g>
+</svg>

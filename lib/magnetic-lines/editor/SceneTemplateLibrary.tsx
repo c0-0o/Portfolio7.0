@@ -229,7 +229,7 @@ export function SceneTemplateLibrary({ currentScene, onApply, onClose }: SceneTe
         <header className="ml-template-head">
           <div>
             <h2 id="ml-template-title">Scene template library</h2>
-            <p>Browse 32 art-directed scenes, preview them, and apply or save your own.</p>
+            <p>Browse art-directed scenes, preview them, and apply or save your own.</p>
           </div>
           <button className="ml-btn" type="button" onClick={onClose} aria-label="Close template library">×</button>
         </header>

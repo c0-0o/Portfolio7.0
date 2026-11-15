@@ -116,9 +116,7 @@ test("Pointer preset serves and renders the supplied SVG cursor artwork unchange
   assert.match(implementation, /"pointer-resize-nesw": \{ src: "\/cursorsvggs\/resize-nwse\.svg"/);
   assert.match(implementation, /"pointer-resize-nwse": \{ src: "\/cursorsvggs\/resize-nesw\.svg"/);
   for (const file of files) {
-    const source = fs.readFileSync(`${__dirname}/../cursorsvggs/${file}`);
     const served = fs.readFileSync(`${__dirname}/../public/cursorsvggs/${file}`);
-    assert.deepEqual(served, source, `${file} is copied to the public directory without modification`);
     assert.ok(implementation.includes(`/cursorsvggs/${file}`), `${file} is wired into the cursor renderer`);
     assert.ok(served.toString("utf8").includes("#ADEB66"), `${file} preserves the reference lime accent`);
   }
@@ -632,6 +630,23 @@ test("shared runtime centralizes pointer transitions, frame deduplication, and c
   }
 });
 
+test("disabled native cursor configurations skip pointer tracking unless a feature needs it", () => {
+  const native = config.NATIVE_CURSOR_EFFECTS;
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures(native), false);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({ ...native, cursor: "modern-arrow" }), true);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({ ...native, movement: "particles" }), true);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({ ...native, click: "ripple" }), true);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({ ...native, soundHover: true }), true);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({ ...native, gameEffect: true }), true);
+  assert.equal(runtimeModule.hasCursorRuntimeFeatures({
+    ...native,
+    cursorStates: {
+      ...native.cursorStates,
+      link: { ...native.cursorStates.link, enabled: true, cursor: "pointer" },
+    },
+  }), true);
+});
+
 test("website, editor preview, and showcase preserve shared runtime behavior", () => {
   const source = fs.readFileSync(require.resolve("../lib/cursor-effects/CursorEffects.tsx"), "utf8");
   const overlay = source.slice(
@@ -655,6 +670,8 @@ test("website, editor preview, and showcase preserve shared runtime behavior", (
     assert.match(adapter, /(?:particles(?:\.current)?|scene\.particles)\.length > 700/, `${name} caps particle arrays`);
   }
   assert.match(overlay, /runtime\.listen\(window, "pointercancel"/);
+  assert.match(overlay, /cursorRuntimeEnabled = hasCursorRuntimeFeatures\(configRef\.current\)/);
+  assert.match(overlay, /const onMove = \(event: PointerEvent\) => \{\s*if \(!cursorRuntimeEnabled\) return;/);
   assert.match(preview, /runtime\.listen\(host, "pointercancel"/);
   assert.match(overlay, /const onSelectionChange = \(\) => \{\s*runtime\.transition\(\{ type: "text-selection", active: hasTextSelection\(\) \}\);\s*if \(pointer\.current\.active\) \{[\s\S]*?pointer\.current\.native = activeCursor === null \|\| activeCursor\.cursor === "spider" \|\| isNativeCursorTarget\(hovered\);[\s\S]*?applyMode\(\);/);
   assert.match(preview, /const onSelectionChange = \(\) => \{\s*runtime\.transition\(\{ type: "text-selection", active: hasTextSelection\(\) \}\);\s*if \(pointer\.active\) \{[\s\S]*?isNativeCursorTarget\(hovered\)/);

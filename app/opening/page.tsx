@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { PortfolioOpening } from "../components/PortfolioOpening";
+import PortfolioHeroExperience from "@/components/portfolio/PortfolioHeroExperience";
+import { SiteShell } from "@/components/portfolio/site";
 
 export const metadata: Metadata = {
   title: "Opening | Portfolio",
-  description: "The animated portfolio opening scene.",
+  description: "Live preview of the portfolio opening scene.",
 };
 
 export default function OpeningPage() {
-  return <PortfolioOpening autoDismiss={false} />;
+  return (
+    <SiteShell activePage="home">
+      <PortfolioHeroExperience once={false} />
+    </SiteShell>
+  );
 }

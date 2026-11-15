@@ -12,7 +12,12 @@ import { getEnvironmentLightPosition, getEnvironmentLights, resolveLineAirflowPa
 import { getMaterialFlowPaths, getMaterialFlowWidthScale, getMetalChainPaths, getTextureLayerStrokeWidth, getTextureLightResponse, getTextureStrokeLayers, offsetTexturePath } from "./texture";
 import { computeLineInteractionOffsets, computeNeighborGlowTargets } from "./engine/lineInteraction";
 import { createOcclusionMaskPlan } from "./engine/occlusion";
-import { createFlowGeometry, FLOW_LAYER_COUNT, renderFlowEffect } from "./engine/flowEngine";
+import {
+  createFlowGeometry,
+  FLOW_LAYER_COUNT,
+  renderFlowEffect,
+  renderHeartbeatPulsePathEffect,
+} from "./engine/flowEngine";
 
 function environmentLightSvgId(instancePrefix: string, type: "light" | "spill", key: string): string {
   const encodedKey = Array.from(key, (character) => character.codePointAt(0)?.toString(16) ?? "0").join("-");
@@ -29,6 +34,7 @@ export interface MagneticBackgroundLinesProps {
   config: MagneticLinesSceneConfig;
   className?: string;
   style?: React.CSSProperties;
+  openingAnimation?: boolean;
   /**
    * Enables editor-only interaction: click-to-select, draggable endpoint handles,
    * and debug overlays. Leave false/omitted in production â€” the background then
@@ -247,6 +253,7 @@ export function MagneticBackgroundLines({
   config,
   className,
   style,
+  openingAnimation = false,
   interactive = false,
   selectedLineId = null,
   showGlowRadiusPreview = DEFAULT_GLOW_RADIUS_PREVIEW,
@@ -304,6 +311,7 @@ export function MagneticBackgroundLines({
   const instancePrefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const pathRefs = useRef<Map<string, SVGPathElement>>(new Map());
+  const openingElectricPathRefs = useRef<Map<string, SVGPathElement>>(new Map());
   const glowPathRefs = useRef<Map<string, SVGPathElement>>(new Map());
   const outerGlowPathRefs = useRef<Map<string, SVGPathElement>>(new Map());
   const innerGlowRadiusRefs = useRef<Map<string, SVGPathElement>>(new Map());
@@ -326,6 +334,7 @@ export function MagneticBackgroundLines({
   const colorGradientRefs = useRef<Map<string, SVGGradientElement>>(new Map());
   const occlusionMaskRefs = useRef<Map<string, SVGMaskElement>>(new Map());
   const occlusionMaskPathRefs = useRef<Map<string, SVGPathElement>>(new Map());
+  const lineGroupRefs = useRef<Map<string, SVGGElement>>(new Map());
   const movePathRefs = useRef<Map<string, SVGPathElement>>(new Map());
   const runtimeStates = useRef<Map<string, LineRuntimeState>>(new Map());
   const lineMotionClocks = useRef<Map<string, { delay: number; startedAt: number }>>(new Map());
@@ -396,6 +405,14 @@ export function MagneticBackgroundLines({
 
   const resolvedLines = useMemo(() => config.lines.map((line) => resolveLineConfig(line, config.global)), [config.lines, config.global]);
   const configuredLineIds = useMemo(() => new Set(config.lines.map((line) => line.id)), [config.lines]);
+  const [openingLineOrderState, setOpeningLineOrderState] = useState<{
+    signature: string;
+    order: Map<string, number>;
+  } | null>(null);
+  const [completedOpeningRun, setCompletedOpeningRun] = useState<{
+    openingAnimation: boolean;
+    openingLineSignature: string;
+  } | null>(null);
   const anchorSignatures = useMemo(
     () => new Map(resolvedLines.map((line) => [
       line.id,
@@ -533,6 +550,44 @@ export function MagneticBackgroundLines({
     () => resolvedLines.filter((l) => l.visible && l.enabled && (!soloLineId || l.id === soloLineId)).sort((a, b) => a.appearance.zIndex - b.appearance.zIndex),
     [resolvedLines, soloLineId]
   );
+  const lineEnvironmentById = useMemo(
+    () => new Map(visibleLines.map((line) => [
+      line.id,
+      resolveLineEnvironment(config.global.environment, line.environment, line.environmentEnabled),
+    ])),
+    [config.global.environment, visibleLines],
+  );
+  const openingLineSignature = visibleLines.map((line) => line.id).join("\0");
+  const openingLineOrder = openingLineOrderState?.signature === openingLineSignature
+    ? openingLineOrderState.order
+    : null;
+  const openingRun = useMemo(
+    () => ({ openingAnimation, openingLineSignature }),
+    [openingAnimation, openingLineSignature],
+  );
+  const openingAnimationComplete = openingAnimation && completedOpeningRun === openingRun;
+  useEffect(() => {
+    if (!openingAnimation) return;
+    const revealDuration = Math.max(0, (Math.ceil(visibleLines.length / 3) - 1) * 1_000 + 2_000);
+    const timeout = window.setTimeout(() => setCompletedOpeningRun(openingRun), revealDuration);
+    return () => window.clearTimeout(timeout);
+  }, [openingAnimation, openingLineSignature, openingRun, visibleLines.length]);
+  const shouldPauseAnimation = pauseAnimation;
+  useEffect(() => {
+    if (!openingAnimation) return;
+    const frame = window.requestAnimationFrame(() => {
+      const lineIds = openingLineSignature ? openingLineSignature.split("\0") : [];
+      for (let index = lineIds.length - 1; index > 0; index--) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [lineIds[index], lineIds[swapIndex]] = [lineIds[swapIndex], lineIds[index]];
+      }
+      setOpeningLineOrderState({
+        signature: openingLineSignature,
+        order: new Map(lineIds.map((lineId, index) => [lineId, index])),
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openingAnimation, openingLineSignature]);
   const visibleLineById = useMemo(() => new Map(visibleLines.map((line) => [line.id, line])), [visibleLines]);
   const hasTargetEffects = useMemo(
     () => visibleLines.some((line) => (config.global.magnetismEnabled && line.magnet.enabled) || line.glow.enabled),
@@ -615,7 +670,7 @@ export function MagneticBackgroundLines({
     let runtimeTime = runtimeTimeRef.current;
 
     function frame(now: number) {
-      if (!pauseAnimation) raf = requestAnimationFrame(frame);
+      if (!shouldPauseAnimation) raf = requestAnimationFrame(frame);
       const dt = last === 0 ? 0 : Math.min(0.05, (now - last) / 1000);
       const motionScale = motionScaleRef.current;
       last = now;
@@ -689,11 +744,8 @@ export function MagneticBackgroundLines({
         }
 
         const resolvedLine = line;
-        const lineEnvironment = resolveLineEnvironment(
-          config.global.environment,
-          resolvedLine.environment,
-          resolvedLine.environmentEnabled,
-        );
+        const lineEnvironment = lineEnvironmentById.get(line.id);
+        if (!lineEnvironment) continue;
         const delay = Math.max(0, resolvedLine.startDelay ?? 0);
         let motionClock = lineMotionClocks.current.get(line.id);
         if (!motionClock || motionClock.delay !== delay) {
@@ -707,18 +759,24 @@ export function MagneticBackgroundLines({
         frameEntries.push({ line, resolvedLine, lineEnvironment, lineState, anchorPlayback, lineTime, result });
       }
 
-      const interactionOffsets = computeLineInteractionOffsets(
-        frameEntries.map(({ resolvedLine, result }) => ({
-          id: resolvedLine.id,
-          points: result.points,
-          width: resolvedLine.appearance.width,
-          segmentLengths: result.segmentLengths,
-          config: resolvedLine.shape.bendable === false
-            ? { ...resolvedLine.lineInteraction, enabled: false }
-            : resolvedLine.lineInteraction,
-        })),
-        Math.min(viewport.width, viewport.height) || 1
-      );
+      const hasLineInteraction = frameEntries.some(({ resolvedLine }) =>
+        resolvedLine.shape.bendable !== false &&
+        resolvedLine.lineInteraction.enabled &&
+        resolvedLine.lineInteraction.strength > 0);
+      const interactionOffsets = hasLineInteraction
+        ? computeLineInteractionOffsets(
+            frameEntries.map(({ resolvedLine, result }) => ({
+              id: resolvedLine.id,
+              points: result.points,
+              width: resolvedLine.appearance.width,
+              segmentLengths: result.segmentLengths,
+              config: resolvedLine.shape.bendable === false
+                ? { ...resolvedLine.lineInteraction, enabled: false }
+                : resolvedLine.lineInteraction,
+            })),
+            Math.min(viewport.width, viewport.height) || 1
+          )
+        : new Map<string, Point[]>();
 
       const renderedResults = new Map<string, ReturnType<typeof computeLine>>();
 
@@ -731,22 +789,25 @@ export function MagneticBackgroundLines({
         renderedResults.set(entry.resolvedLine.id, result);
       }
 
-      const neighborGlowTargets = computeNeighborGlowTargets(
-        frameEntries.flatMap((entry) => {
-          const result = renderedResults.get(entry.resolvedLine.id);
-          return result
-            ? [{
-              id: entry.line.id,
-              points: result.points,
-              config: entry.resolvedLine.outerGlow,
-            }]
-            : [];
-        }),
-        Math.min(viewport.width, viewport.height) || 1,
-        new Set(frameEntries
-          .filter((entry) => entry.result.glowStops.some((intensity) => intensity > 0))
-          .map((entry) => entry.line.id)),
-      );
+      const activeGlowSources = new Set(frameEntries
+        .filter((entry) => entry.result.glowStops.some((intensity) => intensity > 0))
+        .map((entry) => entry.line.id));
+      const neighborGlowTargets = activeGlowSources.size > 0
+        ? computeNeighborGlowTargets(
+            frameEntries.flatMap((entry) => {
+              const result = renderedResults.get(entry.resolvedLine.id);
+              return result
+                ? [{
+                  id: entry.line.id,
+                  points: result.points,
+                  config: entry.resolvedLine.outerGlow,
+                }]
+                : [];
+            }),
+            Math.min(viewport.width, viewport.height) || 1,
+            activeGlowSources,
+          )
+        : new Map<string, number[]>();
       const glowSmoothing = clamp01(config.cursor.smoothing);
       const glowAttack = 1 - Math.exp(-frameDt / (0.05 + (0.6 - 0.05) * glowSmoothing));
       const glowRelease = 1 - Math.exp(-frameDt / 0.18);
@@ -802,6 +863,7 @@ export function MagneticBackgroundLines({
         }
 
         pathRefs.current.get(entry.line.id)?.setAttribute("d", result.d);
+        openingElectricPathRefs.current.get(entry.line.id)?.setAttribute("d", result.d);
         const colorStyle = entry.resolvedLine.appearance.colorStyle;
         if (colorStyle?.type === "rainbow" && entry.resolvedLine.geometrySource === "path" && result.segmentLengths.length > 1) {
           const pathType = entry.resolvedLine.shape.type === "pixel"
@@ -895,7 +957,11 @@ export function MagneticBackgroundLines({
         if (entry.resolvedLine.flow.enabled && flowLayers) {
           const textureEnabled = entry.resolvedLine.texture.enabled;
           const textureType = entry.resolvedLine.texture.type;
-          const flowPaths = textureEnabled
+          const centerlinePulse = openingAnimation && entry.resolvedLine.flow.effectType === "energy-pulse";
+          const heartbeatSinglePath = centerlinePulse &&
+            entry.resolvedLine.flow.pulseRhythm === "heartbeat" &&
+            result.segmentLengths.length === 1;
+          const flowPaths = textureEnabled && !centerlinePulse
             ? getMaterialFlowPaths(
                 textureType,
                 result.points,
@@ -908,31 +974,43 @@ export function MagneticBackgroundLines({
               )
             : [];
           const flowPoints = flowPaths.flat();
-          const geometry = textureEnabled
-            ? createFlowGeometry(flowPoints, flowPaths.map((path) => path.length))
-            : createFlowGeometry(result.points, result.segmentLengths);
+          const geometry = heartbeatSinglePath
+              ? null
+              : textureEnabled && !centerlinePulse
+                ? createFlowGeometry(flowPoints, flowPaths.map((path) => path.length))
+                : createFlowGeometry(result.points, result.segmentLengths);
           const flowConfig = textureEnabled &&
             (textureType === "silk" || textureType === "rope") &&
             entry.resolvedLine.flow.effectType === "fiber-optic"
             ? { ...entry.resolvedLine.flow, strandCount: 1 }
             : entry.resolvedLine.flow;
-          const flowFrames = renderFlowEffect(
-            geometry,
-            geometry.pathData,
-            flowConfig,
-            entry.lineTime,
-            entry.resolvedLine.appearance.width * (
+          const flowTime = openingAnimation ? time : entry.lineTime;
+          const flowWidth = entry.resolvedLine.appearance.width * (
               textureEnabled ? getMaterialFlowWidthScale(textureType) : 1
-            ),
-            motionScale < 0.2,
           );
+          const flowFrames = geometry
+              ? renderFlowEffect(
+                  geometry,
+                  geometry.pathData,
+                  flowConfig,
+                  flowTime,
+                  flowWidth,
+                  motionScale < 0.2,
+                )
+              : renderHeartbeatPulsePathEffect(
+                  result.d,
+                  flowConfig,
+                  flowTime,
+                  flowWidth,
+                  motionScale < 0.2,
+                );
           for (let index = 0; index < FLOW_LAYER_COUNT; index++) {
             const element = flowLayers[index];
             const flowFrame = flowFrames[index];
             if (!element) continue;
             if (!flowFrame) {
-              element.setAttribute("d", "");
-              element.setAttribute("opacity", "0");
+              if (element.getAttribute("d") !== "") element.setAttribute("d", "");
+              if (element.getAttribute("opacity") !== "0") element.setAttribute("opacity", "0");
               continue;
             }
             element.setAttribute("d", flowFrame.pathData);
@@ -985,10 +1063,40 @@ export function MagneticBackgroundLines({
       });
       const occlusionPlan = new Map(createOcclusionMaskPlan(occlusionLines).map((item) => [item.lineId, item.occluderIds]));
       const activeOcclusionPairs = new Set<string>();
+      const activeOcclusionLines = new Set<string>();
       for (const [lineId, occluderIds] of occlusionPlan) {
         const line = visibleLineById.get(lineId);
         const mask = occlusionMaskRefs.current.get(lineId);
-        if (!line || !mask) continue;
+        const lowerResult = renderedResults.get(lineId);
+        if (!line || !mask || !lowerResult) continue;
+        if (!interactive) {
+          let left = Infinity;
+          let top = Infinity;
+          let right = -Infinity;
+          let bottom = -Infinity;
+          for (const point of lowerResult.points) {
+            left = Math.min(left, point.x);
+            top = Math.min(top, point.y);
+            right = Math.max(right, point.x);
+            bottom = Math.max(bottom, point.y);
+          }
+          const padding = 64 +
+            (line.outerGlow.enabled ? line.appearance.width * 6 : line.glow.enabled ? line.appearance.width * 3 : 0) +
+            (line.flow.enabled ? line.appearance.width * line.flow.width * 2 : 0);
+          const leftEdge = Math.max(0, Math.floor((left - padding) / 32) * 32);
+          const topEdge = Math.max(0, Math.floor((top - padding) / 32) * 32);
+          const rightEdge = Math.min(viewport.width, Math.ceil((right + padding) / 32) * 32);
+          const bottomEdge = Math.min(viewport.height, Math.ceil((bottom + padding) / 32) * 32);
+          const bounds = {
+            x: String(leftEdge),
+            y: String(topEdge),
+            width: String(Math.max(1, rightEdge - leftEdge)),
+            height: String(Math.max(1, bottomEdge - topEdge)),
+          };
+          for (const [attribute, value] of Object.entries(bounds)) {
+            if (mask.getAttribute(attribute) !== value) mask.setAttribute(attribute, value);
+          }
+        }
         for (const higherLineId of occluderIds) {
           const higherLine = visibleLineById.get(higherLineId);
           const higherResult = renderedResults.get(higherLineId);
@@ -1008,6 +1116,17 @@ export function MagneticBackgroundLines({
           }
           maskPath.setAttribute("d", higherResult.d);
           maskPath.setAttribute("stroke-width", String(higherLine.appearance.width + line.appearance.width + line.occlusion.gapWidth));
+          activeOcclusionLines.add(lineId);
+        }
+      }
+      for (const line of visibleLines) {
+        const group = lineGroupRefs.current.get(line.id);
+        if (!group || !line.occlusion.enabled || !linesWithHigherZ.has(line.id)) continue;
+        const maskId = `url(#${instancePrefix}-magnetic-occlusion-${line.id})`;
+        if (activeOcclusionLines.has(line.id)) {
+          if (group.getAttribute("mask") !== maskId) group.setAttribute("mask", maskId);
+        } else if (group.hasAttribute("mask")) {
+          group.removeAttribute("mask");
         }
       }
       for (const [pairId, maskPath] of occlusionMaskPathRefs.current) {
@@ -1019,7 +1138,7 @@ export function MagneticBackgroundLines({
 
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [config, configuredLineIds, getAnchorPlayback, hasTargetEffects, instancePrefix, interactive, pauseAnimation, selectedLineId, showGlowRadiusPreview, soloLineId, viewportSize.height, viewportSize.width, visibleLineById, visibleLines]);
+  }, [config, configuredLineIds, getAnchorPlayback, hasTargetEffects, instancePrefix, interactive, lineEnvironmentById, linesWithHigherZ, openingAnimation, selectedLineId, shouldPauseAnimation, showGlowRadiusPreview, soloLineId, viewportSize.height, viewportSize.width, visibleLineById, visibleLines]);
 
 
 
@@ -1055,10 +1174,6 @@ export function MagneticBackgroundLines({
   const resizeHandleX = selectedGroupBounds ? Math.min(W - 8, selectedGroupBounds.right * W + 8) : 0;
   const resizeHandleY = selectedGroupBounds ? Math.min(H - 8, selectedGroupBounds.bottom * H + 8) : 0;
   const selectedLine = !selectedGroupLineIds.length ? resolvedLines.find((line) => line.id === selectedLineId) : undefined;
-  const lineEnvironmentById = new Map(visibleLines.map((line) => [
-    line.id,
-    resolveLineEnvironment(config.global.environment, line.environment, line.environmentEnabled),
-  ]));
   const environmentLights = visibleLines.flatMap((line) => {
     const environment = lineEnvironmentById.get(line.id);
     if (!environment?.enabled || !environment.lightEnabled) return [];
@@ -1150,6 +1265,8 @@ export function MagneticBackgroundLines({
     <svg
       ref={svgRef}
       className={className}
+      data-opening-ready={openingAnimation ? (openingLineOrder ? "true" : "false") : undefined}
+      data-opening-complete={openingAnimation && openingAnimationComplete ? "true" : undefined}
       role="presentation"
       aria-hidden="true"
       focusable="false"
@@ -1166,6 +1283,7 @@ export function MagneticBackgroundLines({
         pointerEvents: interactive || hasTriggeredAnchors ? "auto" : "none",
         touchAction: interactive ? "none" : "auto",
         cursor: environmentPathEditing ? "crosshair" : undefined,
+        transform: !interactive && style?.position !== "absolute" ? "translateZ(0)" : undefined,
         ...style,
       }}
       onPointerDownCapture={(e) => {
@@ -1530,7 +1648,7 @@ export function MagneticBackgroundLines({
             </filter>
           ) : null
         )}
-        {resolvedLines.map((line) => (
+        {resolvedLines.map((line) => line.glow.enabled && line.glow.intensity > 0 ? (
           <linearGradient
             key={`grad-${line.id}`}
             id={`${instancePrefix}-magnetic-glow-${line.id}`}
@@ -1544,7 +1662,10 @@ export function MagneticBackgroundLines({
               <stop
                 key={i}
                 ref={(el) => {
-                  if (!el) return;
+                  if (!el) {
+                    gradientStopRefs.current.delete(line.id);
+                    return;
+                  }
                   const arr = gradientStopRefs.current.get(line.id) ?? [];
                   arr[i] = el;
                   gradientStopRefs.current.set(line.id, arr);
@@ -1555,8 +1676,8 @@ export function MagneticBackgroundLines({
               />
             ))}
           </linearGradient>
-        ))}
-        {resolvedLines.map((line) => (
+        ) : null)}
+        {resolvedLines.map((line) => line.outerGlow.enabled && line.outerGlow.intensity > 0 ? (
           <filter
             key={`outer-filter-${line.id}`}
             id={`${instancePrefix}-magnetic-outer-filter-${line.id}`}
@@ -1573,8 +1694,8 @@ export function MagneticBackgroundLines({
               <feMergeNode in="soft-core" />
             </feMerge>
           </filter>
-        ))}
-        {resolvedLines.map((line) => (
+        ) : null)}
+        {resolvedLines.map((line) => line.outerGlow.enabled && line.outerGlow.intensity > 0 ? (
           <linearGradient
             key={`outer-grad-${line.id}`}
             id={`${instancePrefix}-magnetic-outer-glow-${line.id}`}
@@ -1588,7 +1709,10 @@ export function MagneticBackgroundLines({
               <stop
                 key={i}
                 ref={(el) => {
-                  if (!el) return;
+                  if (!el) {
+                    outerGradientStopRefs.current.delete(line.id);
+                    return;
+                  }
                   const stops = outerGradientStopRefs.current.get(line.id) ?? [];
                   stops[i] = el;
                   outerGradientStopRefs.current.set(line.id, stops);
@@ -1599,7 +1723,7 @@ export function MagneticBackgroundLines({
               />
             ))}
           </linearGradient>
-        ))}
+        ) : null)}
       </defs>
 
         {visibleLines.filter((line) => line.occlusion.enabled && linesWithHigherZ.has(line.id)).map((line) => (
@@ -1607,20 +1731,32 @@ export function MagneticBackgroundLines({
             key={`occlusion-${line.id}`}
             id={`${instancePrefix}-magnetic-occlusion-${line.id}`}
             maskUnits="userSpaceOnUse"
-            x="-100000"
-            y="-100000"
-            width="200000"
-            height="200000"
+            x={0}
+            y={0}
+            width={W}
+            height={H}
             ref={(el) => {
               if (el) occlusionMaskRefs.current.set(line.id, el);
               else occlusionMaskRefs.current.delete(line.id);
             }}
           >
-            <rect x="-100000" y="-100000" width="200000" height="200000" fill="white" />
+            <rect x={0} y={0} width={W} height={H} fill="white" />
           </mask>
         ))}
         {visibleLines.map((line) => (
-        <g key={line.id} mask={line.occlusion.enabled && linesWithHigherZ.has(line.id) ? `url(#${instancePrefix}-magnetic-occlusion-${line.id})` : undefined}>
+        <g
+          key={line.id}
+          ref={(element) => {
+            if (element) lineGroupRefs.current.set(line.id, element);
+            else lineGroupRefs.current.delete(line.id);
+          }}
+          data-opening-line={openingAnimation ? line.id : undefined}
+          style={openingAnimation ? {
+            "--opening-order": Math.floor((openingLineOrder?.get(line.id) ?? 0) / 3),
+            "--opening-pass-delay": `${Math.ceil(visibleLines.length / 3)}s`,
+          } as React.CSSProperties : undefined}
+          mask={line.occlusion.enabled && linesWithHigherZ.has(line.id) ? `url(#${instancePrefix}-magnetic-occlusion-${line.id})` : undefined}
+        >
             <path
               ref={(el) => {
                 if (el) movePathRefs.current.set(line.id, el);
@@ -1707,9 +1843,13 @@ export function MagneticBackgroundLines({
               )}
             </>
           )}
+          {line.outerGlow.enabled && line.outerGlow.intensity > 0 && (
           <path
             d={`M ${line.from.x * W} ${line.from.y * H} L ${line.to.x * W} ${line.to.y * H}`}
-            ref={(el) => { if (el) outerGlowPathRefs.current.set(line.id, el); }}
+            ref={(el) => {
+              if (el) outerGlowPathRefs.current.set(line.id, el);
+              else outerGlowPathRefs.current.delete(line.id);
+            }}
             fill="none"
             stroke={`url(#${instancePrefix}-magnetic-outer-glow-${line.id})`}
             strokeWidth={line.appearance.width * 9}
@@ -1718,10 +1858,13 @@ export function MagneticBackgroundLines({
             pointerEvents="none"
             style={{ filter: `url(#${instancePrefix}-magnetic-outer-filter-${line.id})` }}
           />
+          )}
+          {line.glow.enabled && line.glow.intensity > 0 && (
           <path
             d={`M ${line.from.x * W} ${line.from.y * H} L ${line.to.x * W} ${line.to.y * H}`}
             ref={(el) => {
               if (el) glowPathRefs.current.set(line.id, el);
+              else glowPathRefs.current.delete(line.id);
             }}
             fill="none"
             stroke={`url(#${instancePrefix}-magnetic-glow-${line.id})`}
@@ -1730,6 +1873,7 @@ export function MagneticBackgroundLines({
             opacity={0}
             style={{ filter: `blur(${3 + clamp01(line.glow.intensity / 100) * 4}px)` }}
           />
+          )}
           <path
             d={`M ${line.from.x * W} ${line.from.y * H} L ${line.to.x * W} ${line.to.y * H}`}
             ref={(el) => {
@@ -1780,7 +1924,26 @@ export function MagneticBackgroundLines({
                     }
                   : undefined
             }
+            data-opening-base={openingAnimation ? "" : undefined}
+            pathLength={openingAnimation ? 1 : undefined}
           />
+          {openingAnimation && (
+            <path
+              ref={(element) => {
+                if (element) openingElectricPathRefs.current.set(line.id, element);
+                else openingElectricPathRefs.current.delete(line.id);
+              }}
+              d=""
+              data-opening-electric=""
+              fill="none"
+              stroke={line.appearance.color || config.global.color}
+              strokeOpacity={Math.min(1, line.appearance.opacity * 1.45)}
+              strokeWidth={Math.max(1.2, line.appearance.width * 2.4)}
+              strokeLinecap="round"
+              pathLength={1}
+              pointerEvents="none"
+            />
+          )}
           {line.geometrySource === "path" && line.appearance.colorStyle?.type === "rainbow" && (() => {
             const segmentCount = getCustomPathSegmentCount(line.customPath.points);
             if (segmentCount <= 1) return null;

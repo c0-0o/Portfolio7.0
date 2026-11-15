@@ -4,7 +4,7 @@ import {
   type CursorInteractionEvent,
   type CursorInteractionState,
 } from "./interactions";
-import type { CursorStateId } from "./model";
+import type { CursorEffectsConfig, CursorStateId } from "./model";
 import type { PointerSample } from "./movement";
 
 export interface CursorRuntimePointer {
@@ -54,6 +54,18 @@ export interface CursorRuntimeActivity {
   interaction: boolean;
   loading: boolean;
   simulated: boolean;
+}
+
+export function hasCursorRuntimeFeatures(
+  config: Pick<CursorEffectsConfig, "cursor" | "cursorStates" | "movement" | "click" | "gameEffect" | "soundHover" | "soundClick">,
+): boolean {
+  return config.cursor !== "native" ||
+    Object.values(config.cursorStates).some((state) => state.enabled && state.cursor !== "native") ||
+    config.movement !== "none" ||
+    config.click !== "none" ||
+    config.gameEffect ||
+    config.soundHover ||
+    config.soundClick;
 }
 
 export function shouldContinueCursorRuntime(activity: CursorRuntimeActivity): boolean {

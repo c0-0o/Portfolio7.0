@@ -66,6 +66,7 @@ import "./romance-dessert-renderers";
 import "./weather-space-renderers";
 import {
   createCursorRuntime,
+  hasCursorRuntimeFeatures,
   shouldContinueCursorRuntime,
   updateCursorPointer,
 } from "./runtime";
@@ -1355,6 +1356,7 @@ export function CursorEffectsOverlay() {
     let drawFrame: ((time: number) => void) | null = null;
     const runtime = createCursorRuntime((time) => drawFrame?.(time), pointer.current);
     let canvasAvailable = false;
+    let cursorRuntimeEnabled = false;
     let pointerDown = false;
     let dragged = false;
     let pointerDownX = 0;
@@ -1368,6 +1370,7 @@ export function CursorEffectsOverlay() {
       body.dataset.nativeCursorActive = String(pointer.current.native || activeCursor === null || activeCursor.cursor === "spider");
     };
     const load = () => {
+      const wasCursorRuntimeEnabled = cursorRuntimeEnabled;
       try {
         configRef.current = window.localStorage.getItem(CURSOR_EFFECTS_APPLIED_KEY) === "true"
           ? loadCursorEffects()
@@ -1375,14 +1378,20 @@ export function CursorEffectsOverlay() {
       } catch {
         configRef.current = WEBSITE_CURSOR_DISABLED_CONFIG;
       }
+      cursorRuntimeEnabled = hasCursorRuntimeFeatures(configRef.current);
       if (configRef.current.cursor === "native") {
         particles.current.length = 0;
         bursts.current.length = 0;
         trail.current.length = 0;
         pointer.current.pounce = null;
       }
+      if (wasCursorRuntimeEnabled && !cursorRuntimeEnabled) {
+        pointer.current.native = true;
+        hoveredTarget.current = null;
+        runtime.leave();
+      }
       applyMode();
-      if (drawFrame) runtime.schedule();
+      if (drawFrame && (wasCursorRuntimeEnabled || cursorRuntimeEnabled)) runtime.schedule();
     };
     const query = window.matchMedia("(hover: hover) and (pointer: fine)");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1419,6 +1428,7 @@ export function CursorEffectsOverlay() {
     runtime.listen(window, "resize", resize);
 
     const onMove = (event: PointerEvent) => {
+      if (!cursorRuntimeEnabled) return;
       if (event.pointerType === "touch" || !query.matches) {
         runtime.leave();
         pointer.current.native = false;

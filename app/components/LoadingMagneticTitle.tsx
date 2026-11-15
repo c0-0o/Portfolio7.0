@@ -8,7 +8,6 @@ const TARGET_BY_PATH: Record<string, string> = {
   "/": "hero-title",
   "/about": "about-title",
   "/playground": "playground-title",
-  "/projects": "projects-title",
 };
 
 export function LoadingMagneticTitle({ children }: { children: ReactNode }) {

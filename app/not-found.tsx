@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MagneticTarget } from "@/lib/magnetic-lines";
-import { SiteNav } from "./components/SiteNav";
+import { SiteNav } from "@/components/Navigation/SiteNav";
 
 export default function NotFound() {
   return (
@@ -22,7 +22,7 @@ export default function NotFound() {
           <p>The link might be old, or the page may have moved. Let’s get you back to something good.</p>
           <div className="not-found-actions">
             <Link className="portfolio-button" href="/">Back to home <span aria-hidden="true">↗</span></Link>
-            <Link className="portfolio-text-link" href="/projects">Explore my work <span aria-hidden="true">↗</span></Link>
+            <Link className="portfolio-text-link" href="/#work">Explore my work <span aria-hidden="true">↗</span></Link>
           </div>
         </div>
       </section>

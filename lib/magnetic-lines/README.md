@@ -5,6 +5,9 @@ dev-only visual editor that art-directs it. One engine powers both — the
 editor's preview *is* the production component (`interactive` prop just adds
 selection/handles/debug on top).
 
+For a focused, editor-only feature and workflow guide, see the project
+[`README.md`](../../README.md).
+
 ## Install
 
 Drop the `magnetic-lines/` folder into your project (e.g. `src/lib/magnetic-lines/`).
@@ -183,6 +186,15 @@ wider radii spread the wind across more of a line. Colored lights have draggable
   fixed turn-by-turn schedule.
   Global and individual settings share the existing animation loop and spring
   easing.
+- The opening-scene line reveal runs alongside ambient line motion and flow.
+  Lines unfurl upward like growing stems in slow, three-line waves, with a
+  gradual draw and fade between waves. Once the reveal finishes, completed CSS
+  draw animations are cleared.
+  Every non-node filament carries three slow inward pulls with rests between
+  them. Each pull grows wider and brighter while retaining its configured green
+  color; the sequence quickens before the 10-second opening exits. The three
+  nodes keep their separate breathing animation, and low-strength random
+  airflow keeps filament drift softly varied.
 - Optional Flow & Energy overlays follow each line's live, multi-stroke geometry
   in that same animation loop, in both the editor and production renderer. The
   initial set includes electric current, continuous light, plasma, fiber optic,

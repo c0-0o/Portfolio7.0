@@ -52,6 +52,7 @@ test("texture types use distinct rendering layers", () => {
   assert.equal(layers[5][1].colorTone, "shadow");
   assert.equal(layers[5][3].colorTone, "glint");
   assert.equal(getMaterialFlowWidthScale("metal"), 0.36);
+  assert.equal(getMaterialFlowWidthScale("silk"), 0.3);
 });
 
 test("flow geometry follows material strands without joining source strokes", () => {

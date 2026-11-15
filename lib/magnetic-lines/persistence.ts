@@ -8,7 +8,7 @@ export const PAGE_SCENES_STORAGE_KEY = "magnetic-lines-page-scenes:v1";
 export const PAGE_REGISTRY_STORAGE_KEY = "magnetic-lines-pages:v1";
 export const PAGE_PREVIEW_STORAGE_KEY = "magnetic-lines-page-preview:v1";
 
-const BUILT_IN_PAGE_PATHS = ["/", "/about", "/opening", "/projects"];
+const BUILT_IN_PAGE_PATHS = ["/", "/about", "/opening", "/projects", "/playground", "/work/em-collection"];
 
 export function loadPersistedScene(): MagneticLinesSceneConfig {
   if (typeof window === "undefined") return DEFAULT_SCENE;

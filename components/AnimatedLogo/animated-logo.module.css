@@ -1,0 +1,47 @@
+.root {
+  display: inline-block;
+  position: relative;
+  flex: none;
+  line-height: 0;
+  vertical-align: middle;
+  color: inherit;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+  /* Never let the logo be squeezed by flex/grid parents. */
+  min-width: 0;
+}
+
+.interactive {
+  cursor: pointer;
+}
+
+.root:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Crisp, accurate geometry at tiny sizes. */
+  shape-rendering: geometricPrecision;
+}
+
+/* Brand colours, overridable via the `color` / `eyeColor` props or CSS vars. */
+.body {
+  fill: var(--alogo-body, #050505);
+}
+.ear {
+  fill: var(--alogo-ear, #000);
+}
+.eye {
+  fill: var(--alogo-eye, #adeb66);
+}

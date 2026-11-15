@@ -1,0 +1,546 @@
+"use client";
+
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "framer-motion";
+import { CATS, FX_CSS, SCRATCH_OVERLAY, loadingCatMarkup, slamBody, slamDefs, type CatKey } from "./buttonCats";
+import { useCatScheduler } from "./useCatScheduler";
+
+/* ───────────────────────── tokens ───────────────────────── */
+const C = { lime: "#ADEB66", ink: "#141712", paper: "#FCFDF8", hoverText: "#EEF9DE" } as const;
+const H = 52;
+const STYLE_ID = "mbc-button-styles";
+
+type Visual = "default" | "hover" | "smashed";
+
+/* ───────────────────────── squish geometry ───────────────────────── */
+const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+type Pt = [number, number];
+const baseCache = new Map<number, Pt[]>();
+function getBase(W: number): Pt[] {
+  const hit = baseCache.get(W);
+  if (hit) return hit;
+  const p: Pt[] = [];
+  for (let i = 0; i <= 14; i++) p.push([24 + (i * (W - 48)) / 14, 3]);
+  for (let i = 1; i < 8; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 8;
+    p.push([W - 24 + 22 * Math.cos(a), 25 + 22 * Math.sin(a)]);
+  }
+  for (let i = 0; i <= 14; i++) p.push([W - 24 - (i * (W - 48)) / 14, 47]);
+  for (let i = 1; i < 8; i++) {
+    const a = Math.PI / 2 + (i * Math.PI) / 8;
+    p.push([24 + 22 * Math.cos(a), 25 + 22 * Math.sin(a)]);
+  }
+  baseCache.set(W, p);
+  return p;
+}
+
+function smooth(p: Pt[]): string {
+  const n = p.length;
+  const f = (v: number) => v.toFixed(1);
+  let d = `M${f(p[0][0])} ${f(p[0][1])}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = p[(i - 1 + n) % n];
+    const p1 = p[i];
+    const p2 = p[(i + 1) % n];
+    const p3 = p[(i + 2) % n];
+    d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)} ${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)} ${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])} ${f(p2[1])}`;
+  }
+  return d + "Z";
+}
+
+/** Outline dented toward (cx0, cy). h = hover amount 0..1, s = smash amount 0..1 */
+function squishPath(W: number, cx0: number, cy: number, h: number, s: number): string {
+  const w = Math.max(80, Math.round(W));
+  const cx = clamp(cx0, 30, w - 30);
+  const wT = clamp(1.15 - cy / H, 0.3, 1);
+  const wB = clamp(0.15 + cy / H, 0.3, 1);
+  return smooth(
+    getBase(w).map(([x, y]) => {
+      const g = Math.exp(-((x - cx) ** 2) / (2 * 26 * 26));
+      const top = y < 25;
+      const env = smoothstep(14, 40, x) * smoothstep(14, 40, w - x);
+      const dent = (7 * h + 9 * s) * g * env * (top ? wT : wB);
+      let ny = top ? y + dent : y - dent;
+      ny = 47 + (ny - 47) * (1 - 0.45 * s);
+      return [x + ((x - w / 2) / (w / 2)) * (3 * h + 8 * s), ny] as Pt;
+    }),
+  );
+}
+
+/* ───────────────────────── face (the squishy pill) ───────────────────────── */
+interface FaceProps {
+  W: number;
+  wMv: MotionValue<number>;
+  cx: MotionValue<number>;
+  cy: MotionValue<number>;
+  hover: MotionValue<number>;
+  smash: MotionValue<number>;
+  loading: boolean;
+}
+function Face({ W, wMv, cx, cy, hover, smash, loading }: FaceProps) {
+  const d = useTransform([cx, cy, hover, smash, wMv], (v: number[]) =>
+    squishPath(v[4], v[0], v[1], v[2], v[3]),
+  );
+  const edgeOpacity = useTransform(hover, [0, 1], [0.55, 1]);
+  const edgeY = useTransform(smash, [0, 1], [3, 4.5]);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible", pointerEvents: "none" }}
+    >
+      <motion.path d={d} fill={C.lime} style={{ opacity: edgeOpacity, y: edgeY }} />
+      <motion.path
+        d={d}
+        initial={false}
+        animate={{ fill: loading ? C.lime : C.ink }}
+        transition={{ duration: 0.2 }}
+        stroke="#38442D"
+        strokeOpacity={0.6}
+        strokeWidth={0.65}
+      />
+    </svg>
+  );
+}
+
+/* ───────────────────────── component ───────────────────────── */
+export interface ButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "style" | "className" | "onClick" | "disabled" | "type"> {
+  /** label (ignored if children is given) */
+  text?: string;
+  children?: ReactNode;
+  leftIcon?: ReactNode;
+  /** defaults to ↗; pass null for no right icon */
+  rightIcon?: ReactNode | null;
+  /** pin a visual state (useful for docs / Storybook) */
+  property1?: Visual;
+  loading?: boolean;
+  /** show the cat while loading (default true) */
+  loadingCat?: boolean;
+  /** enables the random idle cat system; off = completely normal button */
+  catAnimation?: boolean;
+  /** Show a specific cat for visual QA instead of the random scheduler. */
+  previewCat?: CatKey;
+  disabled?: boolean;
+  type?: "button" | "submit" | "reset";
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
+  className?: string;
+  style?: CSSProperties;
+}
+
+export const Button = ({
+  text = "Primary Button",
+  children,
+  leftIcon,
+  rightIcon,
+  property1 = "default",
+  loading = false,
+  loadingCat = true,
+  catAnimation = false,
+  previewCat,
+  disabled = false,
+  type = "button",
+  onClick,
+  onPointerEnter,
+  onPointerMove,
+  onPointerLeave,
+  className,
+  style,
+  ...rest
+}: ButtonProps): React.ReactElement => {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const reduce = useReducedMotion();
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const [ready, setReady] = useState(false);
+  const [W, setW] = useState(190);
+  const [hovered, setHovered] = useState(false);
+  const [smashed, setSmashed] = useState(false);
+  const [hitKey, setHitKey] = useState(0);
+  const [printPos, setPrintPos] = useState({ x: 95, y: 26 });
+  const [loadTail, setLoadTail] = useState(false);
+
+  /* springs */
+  const [walkSide, setWalkSide] = useState<"left" | "right" | null>(null);
+  const wMv = useMotionValue(190);
+  const cx = useSpring(95, { stiffness: 300, damping: 28 });
+  const cy = useSpring(26, { stiffness: 300, damping: 28 });
+  const hover = useSpring(0, { stiffness: 260, damping: 20 });
+  const smash = useSpring(0, { stiffness: 520, damping: 11, mass: 0.8 });
+  const px = useTransform([cx, wMv], (v: number[]) => clamp(v[0], 45, v[1] - 45) - v[1] / 2);
+  const py = useTransform(cy, (v: number) => (clamp(v, 14, 38) - 30) * 0.5);
+
+  const inert = loading || disabled;
+  const visual: Visual = loading
+    ? "default"
+    : property1 !== "default"
+      ? property1
+      : smashed
+        ? "smashed"
+        : hovered
+          ? "hover"
+          : "default";
+
+  /* one-time CSS injection (client only → no hydration mismatch) */
+  useEffect(() => {
+    if (!document.getElementById(STYLE_ID)) {
+      const el = document.createElement("style");
+      el.id = STYLE_ID;
+      el.textContent = FX_CSS;
+      document.head.appendChild(el);
+    }
+    const frame = window.requestAnimationFrame(() => setReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  /* hug the content: measure real width */
+  useEffect(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.offsetWidth;
+      if (w > 0) {
+        setW((p) => (p === w ? p : w));
+        wMv.set(w);
+        cx.set(w / 2);
+      }
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wMv, cx]);
+
+  /* visual → springs */
+  useEffect(() => {
+    hover.set(visual === "default" ? 0 : 1);
+    if (visual !== "smashed") {
+      smash.set(0);
+      return;
+    }
+    const t = window.setTimeout(() => smash.set(1), 70);
+    return () => window.clearTimeout(t);
+  }, [visual, hover, smash]);
+
+  /* auto release after a click */
+  useEffect(() => {
+    if (!smashed || property1 === "smashed") return;
+    const t = window.setTimeout(() => setSmashed(false), 700);
+    return () => window.clearTimeout(t);
+  }, [smashed, property1]);
+
+  /* loading: random cat each time (cute / with tail) */
+  useEffect(() => {
+    if (loading) {
+      const timer = window.setTimeout(() => {
+        setLoadTail(Math.random() < 0.5);
+        setSmashed(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [loading]);
+
+  const { cat, react } = useCatScheduler({
+    enabled: catAnimation && previewCat === undefined && !reduce && ready,
+    paused: loading,
+    rootRef,
+  });
+  const activeCat = previewCat ? { key: previewCat, id: -1, duration: CATS[previewCat].duration ?? 7000, seed: 0, phase: "play" as const } : cat;
+
+  const track = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const pointerX = clamp(e.clientX - r.left, 0, r.width);
+      const pointerY = clamp(e.clientY - r.top, 0, r.height);
+      const normalizedX = pointerX / r.width;
+      const normalizedY = pointerY / r.height;
+      cx.set(normalizedX * W);
+      cy.set(normalizedY * H);
+      rootRef.current?.style.setProperty("--mbc-pointer-x", `${(normalizedX * 190).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-pointer-y", `${(88 + normalizedY * H).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-pointer-screen-x", `${(normalizedX * 190).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-pointer-screen-y", `${(normalizedY * H).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-eye-x", `${((normalizedX - 0.5) * 3).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-eye-y", `${((normalizedY - 0.5) * 2).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-catch-x", `${clamp(normalizedX * 190 - 158, -80, 80).toFixed(1)}px`);
+      rootRef.current?.style.setProperty("--mbc-catch-y", `${clamp(88 + normalizedY * H - 108, -28, 40).toFixed(1)}px`);
+    },
+    [cx, cy, W],
+  );
+
+  const updateWalkSide = (e: PointerEvent<HTMLButtonElement>) => {
+    if (activeCat?.key !== "walk") {
+      setWalkSide(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width) return;
+    const position = (e.clientX - rect.left) / rect.width;
+    setWalkSide(position > 0.6 ? "left" : position < 0.4 ? "right" : null);
+  };
+
+  const handlePointerEnter = (e: PointerEvent<HTMLButtonElement>) => {
+    onPointerEnter?.(e);
+    if (inert) return;
+    track(e);
+    updateWalkSide(e);
+    setHovered(true);
+  };
+  const handlePointerMove = (e: PointerEvent<HTMLButtonElement>) => {
+    onPointerMove?.(e);
+    if (!inert) {
+      track(e);
+      updateWalkSide(e);
+    }
+  };
+  const handlePointerLeave = (e: PointerEvent<HTMLButtonElement>) => {
+    onPointerLeave?.(e);
+    setHovered(false);
+    setSmashed(false);
+    setWalkSide(null);
+  };
+  const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (inert) return;
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    const kb = e.detail === 0; // keyboard "click"
+    const x = kb || !r.width ? W / 2 : ((e.clientX - r.left) / r.width) * W;
+    const y = kb || !r.height ? H / 2 : ((e.clientY - r.top) / r.height) * H;
+    cx.set(x);
+    cy.set(y);
+    setPrintPos({ x: clamp(x, 18, W - 18), y: clamp(y, 16, 36) });
+    setHitKey((k) => k + 1);
+    setSmashed(true);
+    if (!reduce && typeof el.animate === "function") {
+      el.animate(
+        [
+          { transform: "none" },
+          { transform: "translate(-8px,2px) rotate(-2.2deg)", offset: 0.25 },
+          { transform: "translate(4px,-1px) rotate(1deg)", offset: 0.5 },
+          { transform: "translate(-2px,0)", offset: 0.75 },
+          { transform: "none" },
+        ],
+        { duration: 400, delay: 50 },
+      );
+    }
+    react();
+    onClick?.(e);
+  };
+
+  /* cat layers */
+  const catVars = (activeCat
+    ? { "--d": `${activeCat.duration}ms`, "--bd": `${-activeCat.seed.toFixed(2)}s` }
+    : {}) as CSSProperties;
+  const showLoadingCat = ready && loading && loadingCat && !reduce;
+  const catMarkup = showLoadingCat
+    ? loadingCatMarkup(loadTail)
+    : ready && activeCat && !loading
+      ? CATS[activeCat.key].render(W)
+      : null;
+  const catClass = showLoadingCat
+    ? "mbc-cat mbc-v-ld"
+    : activeCat
+      ? `mbc-cat mbc-v-${activeCat.key}${activeCat.phase === "rx" ? " mbc-rx" : ""}${activeCat.phase === "fl" ? " mbc-fl" : ""}`
+      : "";
+  const layer: CSSProperties = {
+    position: "absolute",
+    left: "50%",
+    marginLeft: -95,
+    top: -88,
+    width: 190,
+    height: 148,
+    overflow: "visible",
+    pointerEvents: "none",
+  };
+
+  const smashedNow = visual === "smashed";
+  const showRight = rightIcon !== null;
+  const right = rightIcon === undefined ? "↗" : rightIcon;
+  const iconBase: CSSProperties = { display: "inline-flex", fontSize: 21, fontWeight: 400, lineHeight: 1, color: C.lime };
+
+  return (
+    <span
+      ref={rootRef}
+      className={[className, smashedNow ? "mbc-hit" : ""].filter(Boolean).join(" ") || undefined}
+      style={{ ...({ "--cat": C.ink, "--lime": C.lime } as CSSProperties), position: "relative", display: "inline-flex", verticalAlign: "top", ...style }}
+    >
+      {catMarkup && (
+        <svg
+          key={showLoadingCat ? `ld${loadTail ? 1 : 0}` : activeCat?.id}
+          className={catClass}
+          viewBox="0 0 190 100"
+          aria-hidden="true"
+          focusable="false"
+          style={{ ...layer, zIndex: 0, clipPath: "inset(-120px -160px 0 -160px)", ...catVars }}
+          dangerouslySetInnerHTML={{ __html: catMarkup }}
+        />
+      )}
+
+      <button
+        {...rest}
+        ref={btnRef}
+        type={type}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        className="mbc-btn"
+        onClick={handleClick}
+        onPointerEnter={handlePointerEnter}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        style={{
+          position: "relative",
+          zIndex: 1,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: H,
+          width: "100%",
+          padding: "0 28px",
+          border: 0,
+          margin: 0,
+          background: "none",
+          color: visual === "hover" ? C.hoverText : C.paper,
+          font: "inherit",
+          fontSize: 14,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          cursor: disabled ? "not-allowed" : loading ? "progress" : "pointer",
+          opacity: disabled ? 0.5 : 1,
+          transition: "color .2s",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <Face W={W} wMv={wMv} cx={cx} cy={cy} hover={hover} smash={smash} loading={loading} />
+        <span
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            opacity: smashedNow || loading ? 0 : 1,
+            transition: "opacity .12s",
+          }}
+        >
+          {leftIcon != null && (
+            <motion.span
+              aria-hidden="true"
+              style={iconBase}
+              animate={{ rotate: visual === "hover" ? 20 : 0, scale: visual === "hover" ? 1.1 : 1 }}
+              transition={{ type: "spring", stiffness: 400, damping: 14 }}
+            >
+              {leftIcon}
+            </motion.span>
+          )}
+          {children ?? text}
+          {showRight && (
+            <motion.span
+              aria-hidden="true"
+              style={iconBase}
+              animate={{ x: visual === "hover" ? 2 : 0, y: visual === "hover" ? -2 : 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 14 }}
+            >
+              {right}
+            </motion.span>
+          )}
+        </span>
+        {loading && (
+          <span
+            className="mbc-dots"
+            aria-hidden="true"
+            style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, pointerEvents: "none" }}
+          >
+            {[0, 1, 2].map((i) => (
+              <i key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.ink, display: "block" }} />
+            ))}
+          </span>
+        )}
+      </button>
+
+      {/* paw print left where you clicked */}
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        focusable="false"
+        style={{
+          position: "absolute",
+          zIndex: 2,
+          left: printPos.x,
+          top: printPos.y,
+          width: 26,
+          margin: "-13px 0 0 -13px",
+          fill: C.lime,
+          pointerEvents: "none",
+          opacity: smashedNow ? 1 : 0,
+          transform: smashedNow ? "none" : "scale(.6)",
+          transition: "opacity .14s .14s, transform .2s .14s",
+        }}
+      >
+        <ellipse cx="12" cy="16" rx="6" ry="5" />
+        <circle cx="5" cy="9" r="2.4" />
+        <circle cx="10" cy="5.5" r="2.4" />
+        <circle cx="15" cy="5.5" r="2.4" />
+        <circle cx="20" cy="9" r="2.4" />
+      </svg>
+
+      {/* paw slam + rays (restarts on every click) */}
+      {ready && (hitKey > 0 || property1 === "smashed") && (
+        <svg
+          key={hitKey}
+          className="mbc-slam"
+          viewBox="0 0 190 52"
+          aria-hidden="true"
+          focusable="false"
+          style={{ ...layer, top: 0, height: 52, zIndex: 3 }}
+        >
+          <defs dangerouslySetInnerHTML={{ __html: slamDefs(uid) }} />
+          <motion.g style={{ x: px, y: py }}>
+            <g dangerouslySetInnerHTML={{ __html: slamBody(uid) }} />
+          </motion.g>
+        </svg>
+      )}
+
+      {/* angry scratch: paws + claw marks drawn over the button */}
+      {ready && cat?.key === "atk" && !loading && (
+        <svg
+          key={`scr${cat.id}`}
+          className="mbc-scr mbc-v-atk"
+          viewBox="0 0 190 100"
+          aria-hidden="true"
+          focusable="false"
+          style={{ ...layer, zIndex: 4, ...catVars }}
+          dangerouslySetInnerHTML={{ __html: SCRATCH_OVERLAY }}
+        />
+      )}
+    </span>
+  );
+};
+
+export default Button;

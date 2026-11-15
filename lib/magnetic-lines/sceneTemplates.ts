@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { DEFAULT_FLOW, DEFAULT_SCENE } from "./defaultScene";
 import { makeBlankLine, sanitizeSceneConfig } from "./editor/validate";
+import { getHeartbeatCycles } from "./engine/flowEngine";
 
 export const SCENE_TEMPLATE_CATEGORIES = [
   "Organic & Nature",
@@ -35,6 +36,7 @@ export interface SceneTemplateDefinition {
 
 interface TemplateLineSpec {
   paths: string;
+  targetId?: string;
   color?: number;
   width?: number;
   opacity?: number;
@@ -50,14 +52,22 @@ interface TemplateLineSpec {
   textureIntensity?: number;
   textureWeight?: number;
   silkStrands?: number;
+  curveSmoothing?: number;
+  node?: boolean;
   flow?: FlowConfig["effectType"];
   flowSpeed?: number;
   flowPhase?: number;
+  flowStreamCount?: number;
   flowIntensity?: number;
   flowWidth?: number;
+  flowCoreWidth?: number;
+  flowGlowWidth?: number;
   flowOpacity?: number;
   flowPulseWidth?: number;
   flowTailLength?: number;
+  flowGlow?: boolean;
+  flowCoreColor?: string;
+  flowGlowColor?: string;
   flowDirection?: FlowConfig["direction"];
   cursor?: "attract" | "repel";
   cursorRadius?: number;
@@ -79,11 +89,15 @@ interface SceneTemplateSpec {
   palette: string[];
   lines: TemplateLineSpec[];
   wind?: string[];
+  ambientAirflow?: boolean;
   windBehavior?: GlobalSettings["environment"]["airflowBehavior"];
   windSpeed?: number;
   windStrength?: number;
   windRadius?: number;
   windRadii?: number[];
+  flowCurrentLayer?: boolean;
+  flowPulseAllLines?: boolean;
+  targets?: MagneticLinesSceneConfig["targets"];
   light?: { color: string; from: Point; to: Point; radius: number; intensity: number; speed: number };
 }
 
@@ -101,9 +115,12 @@ function makeLine(
   palette: string[],
   hasWind: boolean,
   hasLight: boolean,
+  flowCurrentLayer = true,
 ): MagneticLineConfig {
   const line = makeBlankLine();
-  const id = `${templateId}-line-${String(index + 1).padStart(2, "0")}`;
+  const id = spec.node
+    ? `${templateId}-node-${String(index + 1).padStart(2, "0")}`
+    : `${templateId}-line-${String(index + 1).padStart(2, "0")}`;
   const points = parsePath(spec.paths);
   const first = points[0] ?? { x: 0.1, y: 0.5 };
   const last = points[points.length - 1] ?? first;
@@ -120,19 +137,19 @@ function makeLine(
     direction: spec.flowDirection ?? "forward",
     intensity: spec.flowIntensity ?? (spec.flow === "plasma" ? 0.5 : 0.72),
     width: spec.flowWidth ?? (spec.flow === "plasma" ? 1.6 : 1.4),
-    coreWidth: 0.55,
-    glowWidth: spec.flow === "plasma" ? 4 : 3.5,
+    coreWidth: spec.flowCoreWidth ?? 0.55,
+    glowWidth: spec.flowGlowWidth ?? (spec.flow === "plasma" ? 4 : 3.5),
     opacity: spec.flowOpacity ?? 0.72,
     colors: [color, palette[(spec.color ?? index) + 1] ?? color],
-    coreColor: "#ffffff",
-    glowColor: palette[(spec.color ?? index) + 1] ?? color,
-    streamCount: 1,
+    coreColor: spec.flowCoreColor ?? "#ffffff",
+    glowColor: spec.flowGlowColor ?? palette[(spec.color ?? index) + 1] ?? color,
+    streamCount: spec.flowStreamCount ?? 1,
     phase: spec.flowPhase ?? index * 0.61,
     layers: {
-      current: true,
+      current: flowCurrentLayer,
       core: true,
       secondary: false,
-      glow: true,
+      glow: spec.flowGlow ?? true,
       branches: spec.flow === "electric-current",
       sparks: spec.flow === "electric-current",
     },
@@ -160,6 +177,7 @@ function makeLine(
         ...point,
         ...(pointIndex > 0 && spec.paths.split("|").length > 1 && isStrokeStart(spec.paths, pointIndex) ? { moveTo: true } : {}),
       })),
+      curveSmoothing: spec.curveSmoothing ?? 0,
       closedJoint: "connected",
     },
     appearance: {
@@ -193,7 +211,7 @@ function makeLine(
       deformability: spec.bendable === false ? 0 : 0.58,
     },
     startDelay: spec.delay ?? index * 0.37,
-    magnet: { ...line.magnet, enabled: spec.magnet === true, strength: 34, radius: 0.12, maxDeformation: 0.035 },
+    magnet: { ...line.magnet, enabled: spec.magnet === true || !!spec.targetId, targetId: spec.targetId ?? null, strength: 34, radius: 0.12, maxDeformation: 0.035 },
     glow: {
       ...line.glow,
       enabled: (spec.glow ?? 0) > 0,
@@ -375,10 +393,11 @@ function makeSpiderWebLines(): TemplateLineSpec[] {
 function buildTemplate(spec: SceneTemplateSpec): SceneTemplateDefinition {
   const base = structuredClone(DEFAULT_SCENE);
   const windPaths = (spec.wind ?? []).map(parsePath);
+  const hasWind = windPaths.length > 0 || spec.ambientAirflow === true;
   const environment = {
     ...base.global.environment,
-    enabled: windPaths.length > 0 || !!spec.light,
-    airflowEnabled: windPaths.length > 0,
+    enabled: hasWind || !!spec.light,
+    airflowEnabled: hasWind,
     airflowBehavior: spec.windBehavior ?? "random",
     airflowPath: windPaths[0] ?? [],
     airflowPaths: windPaths,
@@ -420,12 +439,47 @@ function buildTemplate(spec: SceneTemplateSpec): SceneTemplateDefinition {
     lineInteraction: { ...base.global.lineInteraction, enabled: false },
     occlusion: { enabled: true, gapWidth: 1.5 },
   };
+  const lines = spec.lines.map((line, index) => makeLine(spec.id, line, index, spec.palette, hasWind, !!spec.light, spec.flowCurrentLayer));
+  if (spec.flowPulseAllLines) {
+    const speed = 0.16;
+    const pulseWidth = 0.06;
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      if (line.id.includes("-node-")) continue;
+      const source = spec.lines[index];
+      const firstPoint = line.customPath.points[0];
+      const lastPoint = line.customPath.points[line.customPath.points.length - 1];
+      const direction = firstPoint.x > 0.5 && lastPoint.x > firstPoint.x ? "reverse" : "forward";
+      const delay = source.delay ?? 0;
+      const directionSign = direction === "reverse" ? -1 : 1;
+      const phase = -directionSign * getHeartbeatCycles(delay, speed);
+      line.flow = {
+        ...line.flow,
+        enabled: true,
+        effectType: "energy-pulse",
+        pulseRhythm: "heartbeat",
+        speed,
+        direction,
+        intensity: 0.88,
+        width: 1.1,
+        coreWidth: 1.5,
+        glowWidth: 4.4,
+        opacity: 0.97,
+        coreColor: "#7AD321",
+        glowColor: "#A6E96B",
+        streamCount: 1,
+        phase: ((phase % 1) + 1) % 1,
+        layers: { ...line.flow.layers, current: false, core: true, glow: true },
+        pulseWidth,
+      };
+    }
+  }
   const config = sanitizeSceneConfig({
     ...base,
     global,
-    lines: spec.lines.map((line, index) => makeLine(spec.id, line, index, spec.palette, windPaths.length > 0, !!spec.light)),
+    lines,
     groups: [],
-    targets: [],
+    targets: spec.targets ?? [],
     animation: { ...base.animation, playing: true, reducedMotion: "auto" },
   });
 
@@ -442,6 +496,90 @@ function buildTemplate(spec: SceneTemplateSpec): SceneTemplateDefinition {
 }
 
 const TEMPLATES: SceneTemplateSpec[] = [
+  {
+    id: "editorial-magnetic-architecture",
+    name: "EDITORIAL MAGNETIC ARCHITECTURE",
+    category: "Geometric & Structural",
+    summary: "A restrained editorial frame of architectural guides, organic contours, and cursor-responsive green connections.",
+    description: "Ten intentionally placed paths use quiet olive and pale-green linework to frame the portfolio hero without crossing its headline or wordmark. Static construction guides balance two softly moving silk contours, while one fine traveling highlight and existing title and CTA targets add restrained interaction.",
+    palette: ["#7AD321", "#B9C1B0", "#D8F0C2", "#599E23", "#A6E96B"],
+    lines: [
+      { paths: "0,10 12,10 19,12 24,18", color: 1, width: 0.7, opacity: 0.3, bendable: false, z: 0 },
+      { paths: "0,18 5,22 8,29 8,37", color: 2, width: 0.55, opacity: 0.34, bendable: false, z: 0 },
+      { paths: "38,4 48,7 58,7 67,4", color: 1, width: 0.55, opacity: 0.24, bendable: false, z: 0 },
+      { paths: "100,13 94,17 92,24 95,29 100,31", color: 0, width: 0.75, opacity: 0.34, speed: 0.035, amplitude: 0.002, phase: 0.4, z: 1 },
+      { paths: "100,37 94,41 92,48 95,55 100,59", texture: "silk", silkStrands: 3, curveSmoothing: 1, color: 2, width: 0.8, opacity: 0.42, speed: 0.045, amplitude: 0.003, phase: 1.2, cursor: "attract", cursorRadius: 0.13, cursorStrength: 0.14, cursorMaxDeformation: 0.009, cursorSmoothing: 0.5, glow: 0.05, z: 2 },
+      { paths: "97,39 93,44 93,49 97,54", color: 1, width: 0.45, opacity: 0.28, speed: 0.03, amplitude: 0.0015, phase: 2.4, z: 1 },
+      { paths: "0,64 6,61 11,62 16,67", color: 1, width: 0.55, opacity: 0.32, bendable: false, z: 0 },
+      { paths: "0,83 7,79 14,79 20,83 25,88", color: 0, width: 0.82, opacity: 0.42, speed: 0.04, amplitude: 0.002, phase: 3.1, cursor: "attract", cursorRadius: 0.16, cursorStrength: 0.2, cursorMaxDeformation: 0.012, cursorSmoothing: 0.42, targetId: "portfolio-work-cta", flow: "continuous-light", flowSpeed: 0.12, flowIntensity: 0.2, flowWidth: 0.8, flowCoreWidth: 0.5, flowOpacity: 0.38, flowGlow: false, z: 3 },
+      { paths: "100,76 94,79 90,84 91,91 97,96", color: 3, width: 0.7, opacity: 0.3, speed: 0.055, amplitude: 0.0025, phase: 4.3, cursor: "attract", cursorRadius: 0.15, cursorStrength: 0.12, cursorMaxDeformation: 0.008, cursorSmoothing: 0.5, z: 1 },
+      { paths: "95,70 96,69 97,70 96,71 95,70", color: 4, width: 1.15, opacity: 0.6, bendable: false, glow: 0.08, z: 4 },
+    ],
+    targets: [{
+      id: "portfolio-work-cta",
+      lineIds: ["editorial-magnetic-architecture-line-08"],
+      lineTriggers: { "editorial-magnetic-architecture-line-08": { magnet: ["hover", "focus", "touch"] } },
+      activations: ["hover", "focus", "touch"],
+      enabled: true,
+      magnetic: true,
+      strength: 0.72,
+      radius: 0.12,
+      priority: 2,
+    }],
+  },
+  {
+    id: "opening-organic-lime-filaments", name: "Organic Lime Filaments", category: "Organic & Nature",
+    summary: "Six responsive lime filaments frame an opening title with a quiet safe zone.",
+    description: "Two fine silk heroes, three restrained edge guides and one traveling light pulse form an editorial frame around the title and loader. Slow staggered motion, local cursor attraction and very soft airflow keep the lines alive without competing with the wordmark.",
+    palette: ["#7AD321", "#A6E96B", "#599E23", "#B9C5AE", "#D8F0C2"],
+    windBehavior: "gentle",
+    wind: [
+      "0,32 9,26 17,19 27,11 37,2",
+      "0,66 9,66 17,71 25,79 32,89",
+      "100,32 95,39 91,48 90,56 95,63 100,66",
+    ],
+    windSpeed: 0.13, windStrength: 0.14, windRadii: [0.2, 0.16, 0.16],
+    light: { color: "#D8F0C2", from: { x: 0.14, y: 0.24 }, to: { x: 0.86, y: 0.72 }, radius: 0.2, intensity: 0.12, speed: 0.018 },
+    lines: [
+      { paths: "0,27 8,21 15,18 24,10 33,0", texture: "silk", silkStrands: 3, curveSmoothing: 0.92, color: 0, width: 1.1, opacity: 0.86, speed: 0.045, amplitude: 0.006, phase: 0.3, delay: 0.1, airflow: true, cursor: "attract", cursorRadius: 0.18, cursorStrength: 0.22, cursorMaxDeformation: 0.016, cursorSmoothing: 0.5, glow: 0.12, z: 4 },
+      { paths: "0,42 9,32 17,25 28,15 39,0", curveSmoothing: 0.92, color: 3, width: 0.62, opacity: 0.36, motion: "tension", speed: 0.032, amplitude: 0.003, phase: 1.4, delay: 0.55, z: 1 },
+      { paths: "0,66 8,66 16,70 23,77 30,87 34,100", curveSmoothing: 0.92, color: 0, width: 0.94, opacity: 0.73, speed: 0.055, amplitude: 0.007, phase: 2.1, delay: 0.9, airflow: true, cursor: "attract", cursorRadius: 0.18, cursorStrength: 0.2, cursorMaxDeformation: 0.015, cursorSmoothing: 0.52, z: 3 },
+      { paths: "62,0 70,9 79,15 90,19 100,18", curveSmoothing: 0.92, color: 3, width: 0.58, opacity: 0.34, motion: "tension", speed: 0.028, amplitude: 0.002, phase: 3.4, delay: 0.4, z: 1 },
+      { paths: "100,31 95,38 91,47 89,55 93,62 100,66", texture: "silk", silkStrands: 3, curveSmoothing: 0.92, color: 0, width: 1.1, opacity: 0.86, speed: 0.052, amplitude: 0.006, phase: 4.1, delay: 1.2, airflow: true, cursor: "attract", cursorRadius: 0.18, cursorStrength: 0.24, cursorMaxDeformation: 0.016, cursorSmoothing: 0.5, glow: 0.14, z: 4 },
+      { paths: "55,100 61,89 70,82 81,77 92,68 100,59", curveSmoothing: 0.92, color: 0, width: 0.96, opacity: 0.7, speed: 0.05, amplitude: 0.005, phase: 2.8, delay: 1.65, airflow: true, cursor: "attract", cursorRadius: 0.16, cursorStrength: 0.2, cursorMaxDeformation: 0.014, cursorSmoothing: 0.54, flow: "energy-pulse", flowSpeed: 0.15, flowIntensity: 0.42, flowWidth: 1, flowOpacity: 0.52, flowPulseWidth: 0.04, flowTailLength: 0.08, flowGlow: true, flowCoreColor: "#A6E96B", flowGlowColor: "#7AD321", z: 3 },
+    ],
+  },
+  {
+    id: "opening-luminous-silk-filaments", name: "Organic Lime Filaments — Luminous", category: "Organic & Nature",
+    summary: "Silk bundles, green double-beat pulses that build toward the end of the opening, a softly shifting random breeze and three breathing nodes frame the scene.",
+    description: "Four intentional edge compositions layer fine parallel silk strands with slender green double-beat pulses that travel from the outer edges inward along every filament. Each quick pair is followed by a rest, and the beat grows faster and stronger as the opening approaches completion. Subtle dotted guides and three breathing nodes add texture while the center stays open for the wordmark and loader.",
+    palette: ["#7AD321", "#A6E96B", "#599E23", "#B9C5AE", "#D8F0C2"],
+    windBehavior: "random",
+    ambientAirflow: true,
+    windSpeed: 0.3, windStrength: 0.12,
+    flowCurrentLayer: false,
+    flowPulseAllLines: true,
+    light: { color: "#D8F0C2", from: { x: 0.1, y: 0.18 }, to: { x: 0.9, y: 0.8 }, radius: 0.16, intensity: 0.08, speed: 0.012 },
+    lines: [
+      { paths: "0,31 7,28 13,23 18,17 25,8 30,0", texture: "silk", textureIntensity: 0.84, silkStrands: 5, curveSmoothing: 1, color: 0, width: 1.05, opacity: 0.84, speed: 0.035, amplitude: 0.0027, phase: 0.2, delay: 0, airflow: true, cursor: "attract", cursorRadius: 0.18, cursorStrength: 0.1, cursorMaxDeformation: 0.007, cursorSmoothing: 0.62, glow: 0.1, z: 4, flow: "energy-pulse", flowSpeed: 0.42, flowStreamCount: 3, flowIntensity: 0.78, flowWidth: 1.1, flowCoreWidth: 0.85, flowGlowWidth: 3, flowOpacity: 1, flowPulseWidth: 0.14, flowTailLength: 0.14, flowGlow: true, flowCoreColor: "#7AD321", flowGlowColor: "#A6E96B" },
+      { paths: "0,36 7,32 13,27 18,21 24,12 29,3", curveSmoothing: 1, color: 4, width: 0.58, opacity: 0.46, motion: "tension", speed: 0.032, amplitude: 0.0027, phase: 1.5, delay: 0.28, airflow: true, z: 2 },
+      { paths: "0,25 7,24 13,21 19,17 25,12 31,6 35,0", texture: "fiber", curveSmoothing: 1, color: 2, width: 0.48, opacity: 0.36, speed: 0.044, amplitude: 0.003, phase: 2.1, delay: 0.56, airflow: true, z: 1 },
+      { paths: "0,13 8,15 14,18 18,21 25,25 33,27 40,25", texture: "silk", silkStrands: 4, curveSmoothing: 1, color: 1, width: 0.72, opacity: 0.55, speed: 0.034, amplitude: 0.0024, phase: 3.2, delay: 0.84, airflow: true, cursor: "attract", cursorRadius: 0.15, cursorStrength: 0.08, cursorMaxDeformation: 0.006, cursorSmoothing: 0.64, z: 3 },
+      { paths: "0,63 9,64 17,69 24,77 29,86 33,95 35,100", texture: "silk", textureIntensity: 0.82, silkStrands: 5, curveSmoothing: 1, color: 0, width: 0.98, opacity: 0.8, speed: 0.048, flowStreamCount: 3, amplitude: 0.003, phase: 2.7, delay: 1.12, airflow: true, cursor: "attract", cursorRadius: 0.17, cursorStrength: 0.09, cursorMaxDeformation: 0.007, cursorSmoothing: 0.62, glow: 0.08, z: 4, flow: "energy-pulse", flowSpeed: 0.42, flowIntensity: 0.78, flowWidth: 1.1, flowCoreWidth: 0.85, flowGlowWidth: 3, flowOpacity: 1, flowPulseWidth: 0.14, flowTailLength: 0.13, flowGlow: true, flowCoreColor: "#7AD321", flowGlowColor: "#A6E96B" },
+      { paths: "0,69 9,69 17,73 24,80 30,89 34,98", curveSmoothing: 1, color: 4, width: 0.55, opacity: 0.43, motion: "tension", speed: 0.035, amplitude: 0.0023, phase: 4.1, delay: 1.4, airflow: true, z: 2 },
+      { paths: "0,75 8,74 16,77 23,83 29,91 33,100", texture: "fiber", curveSmoothing: 1, color: 2, width: 0.42, opacity: 0.32, speed: 0.041, amplitude: 0.0027, phase: 1.1, delay: 1.68, airflow: true, z: 1 },
+      { paths: "64,0 70,7 77,13 85,17 93,19 100,18", texture: "silk", silkStrands: 4, curveSmoothing: 1, color: 3, width: 0.64, opacity: 0.53, speed: 0.032, amplitude: 0.0027, phase: 3.8, delay: 1.96, airflow: true, z: 3 },
+      { paths: "100,24 91,25 84,30 78,37 75,45 77,52", texture: "silk", textureIntensity: 0.82, silkStrands: 5, curveSmoothing: 1, color: 0, width: 0.96, opacity: 0.78, speed: 0.046, flowStreamCount: 3, amplitude: 0.00285, phase: 1.4, delay: 2.24, airflow: true, cursor: "attract", cursorRadius: 0.17, cursorStrength: 0.09, cursorMaxDeformation: 0.007, cursorSmoothing: 0.62, glow: 0.09, z: 4, flow: "energy-pulse", flowSpeed: 0.42, flowIntensity: 0.78, flowWidth: 1.1, flowCoreWidth: 0.85, flowGlowWidth: 3, flowOpacity: 1, flowPulseWidth: 0.14, flowTailLength: 0.13, flowGlow: true, flowCoreColor: "#7AD321", flowGlowColor: "#A6E96B", flowDirection: "reverse" },
+      { paths: "100,30 92,31 85,35 80,42 77,49", curveSmoothing: 1, color: 4, width: 0.52, opacity: 0.4, motion: "tension", speed: 0.035, amplitude: 0.0024, phase: 5.1, delay: 2.52, airflow: true, z: 2 },
+      { paths: "100,37 93,37 87,40 82,45 80,51", texture: "fiber", curveSmoothing: 1, color: 2, width: 0.4, opacity: 0.28, speed: 0.038, amplitude: 0.0024, phase: 2.2, delay: 2.8, airflow: true, z: 1 },
+      { paths: "100,67 91,69 84,75 78,83 73,92 69,100", texture: "silk", textureIntensity: 0.84, silkStrands: 5, curveSmoothing: 1, color: 0, width: 1.02, opacity: 0.82, speed: 0.048, flowStreamCount: 3, amplitude: 0.003, phase: 4.4, delay: 3.08, airflow: true, cursor: "attract", cursorRadius: 0.18, cursorStrength: 0.1, cursorMaxDeformation: 0.007, cursorSmoothing: 0.64, glow: 0.12, flow: "energy-pulse", flowSpeed: 0.42, flowIntensity: 0.78, flowWidth: 1.1, flowCoreWidth: 0.85, flowGlowWidth: 3, flowOpacity: 1, flowPulseWidth: 0.14, flowTailLength: 0.14, flowGlow: true, flowCoreColor: "#7AD321", flowGlowColor: "#A6E96B", z: 4 },
+      { paths: "100,72 92,74 85,79 79,86 74,94 71,100", curveSmoothing: 1, color: 4, width: 0.56, opacity: 0.44, motion: "tension", speed: 0.036, amplitude: 0.0027, phase: 0.9, delay: 3.36, airflow: true, z: 2 },
+      { paths: "100,78 93,79 87,83 81,89 77,96 75,100", texture: "fiber", curveSmoothing: 1, color: 2, width: 0.42, opacity: 0.31, speed: 0.04, amplitude: 0.0027, phase: 2.8, delay: 3.64, airflow: true, z: 1 },
+      { paths: "16.7,16.95 16.95,17.05 17.05,17.3 16.95,17.55 16.7,17.65 16.45,17.55 16.35,17.3 16.45,17.05 16.7,16.95", node: true, curveSmoothing: 1, color: 1, width: 0.72, opacity: 0.9, bendable: false, airflow: false, z: 7 },
+      { paths: "76.3,49.25 76.55,49.35 76.65,49.6 76.55,49.85 76.3,49.95 76.05,49.85 75.95,49.6 76.05,49.35 76.3,49.25", node: true, curveSmoothing: 1, color: 1, width: 0.68, opacity: 0.88, bendable: false, airflow: false, delay: 0.5, z: 7 },
+      { paths: "84.8,73.25 85.05,73.35 85.15,73.6 85.05,73.85 84.8,73.95 84.55,73.85 84.45,73.6 84.55,73.35 84.8,73.25", node: true, curveSmoothing: 1, color: 1, width: 0.68, opacity: 0.88, bendable: false, airflow: false, delay: 1, z: 7 },
+    ],
+  },
   {
     id: "spider-web-suspended-silk", name: "Spider Web — Suspended Silk", category: "Organic & Nature",
     summary: "A broad, fine silver web with an off-center hub and irregular spiral.",

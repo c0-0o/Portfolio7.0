@@ -23,6 +23,13 @@ import { createAirflowField, resolveLineEnvironment } from "../environment";
 import { getTextureGravityResponse, getTextureMaterialResponse } from "../texture";
 
 export const SAMPLES = 24;
+type StaticCustomPathGeometry = {
+  width: number;
+  height: number;
+  controls: PathPoint[];
+  segments: Point[][];
+};
+const staticCustomPathGeometryCache = new WeakMap<MagneticLineConfig, StaticCustomPathGeometry>();
 
 export interface LineRuntimeState {
   /** Current, eased (spring) magnetic offset per sample point, in px. */
@@ -371,6 +378,72 @@ function samplePolyline(source: PathPoint[], viewport: { width: number; height: 
   return sampled;
 }
 
+function sampleSmoothPath(
+  source: PathPoint[],
+  viewport: { width: number; height: number },
+  smoothing: number,
+  closed: boolean,
+): Point[] {
+  const points = source.map((point) => ({ x: point.x * viewport.width, y: point.y * viewport.height }));
+  const controls = closed ? points.slice(0, -1) : points;
+  const segmentCount = closed ? controls.length : controls.length - 1;
+  if (smoothing <= 0 || segmentCount < 2) return samplePolyline(source, viewport);
+
+  const segmentLengths = Array.from({ length: segmentCount }, (_, index) =>
+    distance(controls[index], controls[(index + 1) % controls.length]));
+  const totalLength = segmentLengths.reduce((total, length) => total + length, 0);
+  if (totalLength <= 0) return samplePolyline(source, viewport);
+
+  const intervals = Math.max(segmentCount, Math.min(96, Math.max(32, segmentCount * 4, Math.ceil(totalLength / 10))));
+  const minimumPerSegment = Math.min(4, Math.floor(intervals / segmentCount));
+  const remainingIntervals = intervals - minimumPerSegment * segmentCount;
+  const allocations = segmentLengths.map((length) => {
+    const ideal = (length / totalLength) * remainingIntervals;
+    return { intervals: minimumPerSegment + Math.floor(ideal), remainder: ideal - Math.floor(ideal) };
+  });
+  const unallocated = intervals - allocations.reduce((total, allocation) => total + allocation.intervals, 0);
+  allocations
+    .map((allocation, index) => ({ index, remainder: allocation.remainder }))
+    .sort((left, right) => right.remainder - left.remainder)
+    .slice(0, unallocated)
+    .forEach(({ index }) => { allocations[index].intervals += 1; });
+
+  const knotDistance = (left: Point, right: Point) => Math.max(0.0001, Math.sqrt(distance(left, right)));
+  const curvePoint = (segmentIndex: number, t: number): Point => {
+    const nextIndex = (segmentIndex + 1) % controls.length;
+    const p0 = closed ? controls[(segmentIndex - 1 + controls.length) % controls.length] : controls[Math.max(0, segmentIndex - 1)];
+    const p1 = controls[segmentIndex];
+    const p2 = controls[nextIndex];
+    const p3 = closed ? controls[(nextIndex + 1) % controls.length] : controls[Math.min(controls.length - 1, segmentIndex + 2)];
+    const t0 = 0;
+    const t1 = t0 + knotDistance(p0, p1);
+    const t2 = t1 + knotDistance(p1, p2);
+    const t3 = t2 + knotDistance(p2, p3);
+    const tValue = t1 + (t2 - t1) * t;
+    const interpolate = (left: Point, right: Point, leftTime: number, rightTime: number) => {
+      const ratio = (tValue - leftTime) / Math.max(0.0001, rightTime - leftTime);
+      return lerpPoint(left, right, ratio);
+    };
+    const a1 = interpolate(p0, p1, t0, t1);
+    const a2 = interpolate(p1, p2, t1, t2);
+    const a3 = interpolate(p2, p3, t2, t3);
+    const b1 = interpolate(a1, a2, t0, t2);
+    const b2 = interpolate(a2, a3, t1, t3);
+    const curved = interpolate(b1, b2, t1, t2);
+    const linear = lerpPoint(p1, p2, t);
+    return lerpPoint(linear, curved, smoothing);
+  };
+
+  const sampled: Point[] = [points[0]];
+  allocations.forEach((allocation, segmentIndex) => {
+    for (let step = 1; step <= allocation.intervals; step++) {
+      sampled.push(curvePoint(segmentIndex, step / allocation.intervals));
+    }
+  });
+  if (closed) sampled[sampled.length - 1] = { ...sampled[0] };
+  return sampled;
+}
+
 function sampleCustomPath(config: MagneticLineConfig, viewport: { width: number; height: number }, source?: PathPoint[]): Point[][] {
   const points = source ?? config.customPath.points;
   const segments: PathPoint[][] = [];
@@ -380,9 +453,35 @@ function sampleCustomPath(config: MagneticLineConfig, viewport: { width: number;
     segments[segments.length - 1].push(point);
   }
   const usableSegments = segments.filter((segment) => segment.length >= 2);
-  if (usableSegments.length > 0) return usableSegments.map((segment) => samplePolyline(segment, viewport));
+  if (usableSegments.length > 0) return usableSegments.map((segment) => {
+    const closed = config.customPath.curveSmoothing !== undefined &&
+      config.customPath.closedJoint !== "breakable" &&
+      !segment.some((point) => point.moveTo) &&
+      segment.length > 2 &&
+      segment[0].x === segment[segment.length - 1].x &&
+      segment[0].y === segment[segment.length - 1].y;
+    return sampleSmoothPath(segment, viewport, config.customPath.curveSmoothing ?? 0, closed);
+  });
   const fallback = [{ id: "path-start", ...config.from }, { id: "path-end", ...config.to }];
   return [samplePolyline(fallback, viewport)];
+}
+
+function getStaticCustomPathGeometry(
+  config: MagneticLineConfig,
+  viewport: { width: number; height: number },
+): StaticCustomPathGeometry {
+  const cached = staticCustomPathGeometryCache.get(config);
+  if (cached?.width === viewport.width && cached.height === viewport.height) return cached;
+
+  const controls = getCustomPathPointsInViewport(config, viewport);
+  const geometry = {
+    width: viewport.width,
+    height: viewport.height,
+    controls,
+    segments: sampleCustomPath(config, viewport, controls),
+  };
+  staticCustomPathGeometryCache.set(config, geometry);
+  return geometry;
 }
 
 interface CustomPathViewportTransform {
@@ -630,9 +729,17 @@ export function computeLine(
   const minDim = Math.min(viewport.width, viewport.height) || 1;
   const bendable = config.shape.bendable !== false;
   const customPathActive = config.geometrySource === "path" && config.customPath.points.length >= 2;
-  const customPathControls = customPathActive ? getCustomPathPointsInViewport(config, viewport) : undefined;
+  const hasPathAnchors = customPathActive && bendable && config.anchorPoints.some((anchor) =>
+    anchor.enabled && anchor.endpoint === "path");
+  const staticPathGeometry = customPathActive && !hasPathAnchors
+    ? getStaticCustomPathGeometry(config, viewport)
+    : undefined;
+  const customPathControls = customPathActive
+    ? staticPathGeometry?.controls ?? getCustomPathPointsInViewport(config, viewport)
+    : undefined;
   const animatedPathControls = customPathActive
-    ? (customPathControls ?? config.customPath.points).map((point) => {
+    ? hasPathAnchors
+      ? (customPathControls ?? config.customPath.points).map((point) => {
       const base = { x: point.x * viewport.width, y: point.y * viewport.height };
       const hasPathAnchors = bendable && config.anchorPoints.some((anchor) =>
         anchor.enabled && anchor.endpoint === "path" && anchor.pathPointId === point.id);
@@ -640,8 +747,11 @@ export function computeLine(
       const animated = resolveAnchorSequence(base, "path", config, viewport, time, minDim, anchorPlayback, point.id);
       return { ...point, x: animated.x / viewport.width, y: animated.y / viewport.height };
     })
+      : customPathControls
     : undefined;
-  const customPathSegments = customPathActive ? sampleCustomPath(config, viewport, animatedPathControls) : [];
+  const customPathSegments = customPathActive
+    ? staticPathGeometry?.segments ?? sampleCustomPath(config, viewport, animatedPathControls)
+    : [];
   const pathFrom: Point = customPathActive ? customPathSegments[0][0] : { x: config.from.x * viewport.width, y: config.from.y * viewport.height };
   const lastCustomSegment = customPathSegments[customPathSegments.length - 1];
   const pathTo: Point = customPathActive && lastCustomSegment
@@ -857,7 +967,8 @@ export function computeLine(
   const environment = resolvedEnvironment ?? resolveLineEnvironment(scene.global.environment, config.environment, config.environmentEnabled);
   const isSilk = config.texture.enabled && config.texture.type === "silk";
   const materialResponse = getTextureMaterialResponse(config.texture.type, config.texture.weight, config.texture.enabled);
-  const minimumAirflowRadius = sampleSegmentRanges.reduce((minimum, range) => {
+  const hasAirflowGuides = (environment.airflowPaths ?? [environment.airflowPath]).some((path) => path.length >= 2);
+  const minimumAirflowRadius = environment.airflowBehavior === "random" && !hasAirflowGuides ? 0 : sampleSegmentRanges.reduce((minimum, range) => {
     if (range.end - range.start < 2) return minimum;
     let segmentLength = 0;
     for (let index = range.start + 1; index < range.end; index++) {
@@ -883,7 +994,9 @@ export function computeLine(
     }
     desiredAirOffsets[i] = desiredAir;
   }
-  const resolvedAirOffsets = isSilk ? smoothAirflowOffsets(desiredAirOffsets, sampleSegmentRanges) : desiredAirOffsets;
+  const resolvedAirOffsets = isSilk || environment.airflowBehavior === "random"
+    ? smoothAirflowOffsets(desiredAirOffsets, sampleSegmentRanges)
+    : desiredAirOffsets;
   for (let i = 0; i < sampleCount; i++) {
     state.environmentOffset[i] = bendable
       ? {
@@ -894,44 +1007,50 @@ export function computeLine(
   }
 
   // ---- 5. Cursor Influence (geometry only, after Magnet and airflow) ----
-  const cursorDesired: Point[] = Array.from({ length: sampleCount }, () => ({ x: 0, y: 0 }));
-  const magnetizedPoints = basePoints.map((point, i) => ({
-    x: point.x + state.deformOffset[i].x + state.environmentOffset[i].x,
-    y: point.y + state.deformOffset[i].y + state.environmentOffset[i].y,
-  }));
   const cursorConfig = config.cursorInfluence;
-  const gravityPinnedSampleIndices = new Set<number>();
-  if (config.gravity?.enabled) {
-    const fixedPointIds = config.gravity.fixedPointIds ?? ["start", "end"];
-    for (const id of fixedPointIds) {
-      let fixedPoint: Point | undefined;
-      if (customPathActive && animatedPathControls) {
-        const pathPoint = id === "start"
-          ? animatedPathControls[0]
-          : id === "end"
-            ? animatedPathControls[animatedPathControls.length - 1]
-            : animatedPathControls.find((point) => point.id === id);
-        if (pathPoint) fixedPoint = { x: pathPoint.x * viewport.width, y: pathPoint.y * viewport.height };
-      } else if (id === "start") {
-        fixedPoint = basePoints[0];
-      } else if (id === "end") {
-        fixedPoint = basePoints[basePoints.length - 1];
-      }
-      if (!fixedPoint) continue;
-
-      let nearestIndex = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      for (let index = 0; index < basePoints.length; index++) {
-        const candidateDistance = distance(basePoints[index], fixedPoint);
-        if (candidateDistance < nearestDistance) {
-          nearestDistance = candidateDistance;
-          nearestIndex = index;
+  const cursorActive = bendable &&
+    cursorConfig.enabled &&
+    pointer?.active === true &&
+    cursorConfig.radius > 0 &&
+    cursorConfig.maxDeformation > 0;
+  let cursorDesired: Point[] | null = null;
+  if (cursorActive && pointer) {
+    cursorDesired = Array.from({ length: sampleCount }, () => ({ x: 0, y: 0 }));
+    const magnetizedPoints = basePoints.map((point, i) => ({
+      x: point.x + state.deformOffset[i].x + state.environmentOffset[i].x,
+      y: point.y + state.deformOffset[i].y + state.environmentOffset[i].y,
+    }));
+    const gravityPinnedSampleIndices = new Set<number>();
+    if (config.gravity?.enabled) {
+      const fixedPointIds = config.gravity.fixedPointIds ?? ["start", "end"];
+      for (const id of fixedPointIds) {
+        let fixedPoint: Point | undefined;
+        if (customPathActive && animatedPathControls) {
+          const pathPoint = id === "start"
+            ? animatedPathControls[0]
+            : id === "end"
+              ? animatedPathControls[animatedPathControls.length - 1]
+              : animatedPathControls.find((point) => point.id === id);
+          if (pathPoint) fixedPoint = { x: pathPoint.x * viewport.width, y: pathPoint.y * viewport.height };
+        } else if (id === "start") {
+          fixedPoint = basePoints[0];
+        } else if (id === "end") {
+          fixedPoint = basePoints[basePoints.length - 1];
         }
+        if (!fixedPoint) continue;
+
+        let nearestIndex = 0;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < basePoints.length; index++) {
+          const candidateDistance = distance(basePoints[index], fixedPoint);
+          if (candidateDistance < nearestDistance) {
+            nearestDistance = candidateDistance;
+            nearestIndex = index;
+          }
+        }
+        gravityPinnedSampleIndices.add(nearestIndex);
       }
-      gravityPinnedSampleIndices.add(nearestIndex);
     }
-  }
-  if (bendable && cursorConfig.enabled && pointer?.active && cursorConfig.radius > 0 && cursorConfig.maxDeformation > 0) {
     const radiusPx = cursorConfig.radius * minDim;
     const maxDeformPx = cursorConfig.maxDeformation * minDim;
     for (let i = 0; i < sampleCount; i++) {
@@ -962,8 +1081,8 @@ export function computeLine(
   for (let i = 0; i < sampleCount; i++) {
     state.cursorOffset[i] = bendable && cursorConfig.enabled
       ? {
-        x: lerp(state.cursorOffset[i].x, cursorDesired[i].x, cursorSpringFactor),
-        y: lerp(state.cursorOffset[i].y, cursorDesired[i].y, cursorSpringFactor),
+        x: lerp(state.cursorOffset[i].x, cursorDesired?.[i]?.x ?? 0, cursorSpringFactor),
+        y: lerp(state.cursorOffset[i].y, cursorDesired?.[i]?.y ?? 0, cursorSpringFactor),
       }
       : { x: 0, y: 0 };
   }
@@ -1050,7 +1169,7 @@ export function computeLine(
       segmentLengths,
       shape.type === "pixel"
         ? "pixel"
-        : (shape.type === "sharp" || shape.type === "straight") && customPathActive
+        : (shape.type === "sharp" || shape.type === "straight") && customPathActive && (config.customPath.curveSmoothing ?? 0) <= 0
           ? "polyline"
           : "smooth",
       Math.max(1, shape.pixelStep),

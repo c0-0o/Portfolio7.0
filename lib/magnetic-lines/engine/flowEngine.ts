@@ -1,7 +1,11 @@
 import type { FlowConfig, Point } from "../types";
-import { clamp01, distance, perpendicular } from "./math";
+import { clamp01, distance, perpendicular, pointsToSmoothPath } from "./math";
 
 export const FLOW_LAYER_COUNT = 8;
+
+const HEARTBEAT_RAMP_DURATION = 8;
+const HEARTBEAT_FINAL_RATE_MULTIPLIER = 2.4;
+const HEARTBEAT_BEAT_WINDOWS = [[0, 0.16], [0.32, 0.48], [0.64, 0.8]] as const;
 
 export interface FlowPathSample {
   point: Point;
@@ -47,8 +51,8 @@ function normalize(vector: Point): Point {
 
 function pathString(paths: Point[][], closedPaths: boolean[] = []): string {
   return paths
-    .filter((points) => points.length > 0)
-    .map((points, index) => `M ${points.map((point) => `${point.x} ${point.y}`).join(" L ")}${closedPaths[index] ? " Z" : ""}`)
+    .map((points, index) => pointsToSmoothPath(points, closedPaths[index] ?? false))
+    .filter(Boolean)
     .join(" ");
 }
 
@@ -154,6 +158,16 @@ function modulo(value: number, divisor = 1): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
+export function getHeartbeatCycles(time: number, speed: number): number {
+  const elapsed = Math.max(0, time);
+  const rampTime = Math.min(elapsed, HEARTBEAT_RAMP_DURATION);
+  const afterRamp = Math.max(0, elapsed - HEARTBEAT_RAMP_DURATION);
+  const rampCycles = rampTime +
+    ((HEARTBEAT_FINAL_RATE_MULTIPLIER - 1) * rampTime * rampTime) /
+    (2 * HEARTBEAT_RAMP_DURATION);
+  return Math.max(0, speed) * (rampCycles + afterRamp * HEARTBEAT_FINAL_RATE_MULTIPLIER);
+}
+
 function hash(index: number): number {
   let value = (index | 0) + 0x6d2b79f5;
   value = Math.imul(value ^ (value >>> 15), value | 1);
@@ -182,6 +196,15 @@ function colorAt(config: FlowConfig, time: number, position = 0): string {
   const second = parseHex(colors[(index + 1) % colors.length]);
   return `#${first.map((channel, component) =>
     Math.round(channel + (second[component] - channel) * amount).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function blendColors(start: string, end: string, amount: number): string {
+  const first = parseHex(start);
+  const second = parseHex(end);
+  const progress = clamp01(amount);
+  return `#${first.map((channel, index) =>
+    Math.round(channel + (second[index] - channel) * progress).toString(16).padStart(2, "0"),
+  ).join("")}`;
 }
 
 function streamProgress(config: FlowConfig, time: number, index: number, count: number): { progress: number; direction: 1 | -1 } {
@@ -408,7 +431,7 @@ function fiberOptic(
 }
 
 function energyPulse(
-  geometry: FlowGeometry,
+  geometry: FlowGeometry | null,
   pathData: string,
   config: FlowConfig,
   time: number,
@@ -419,13 +442,48 @@ function energyPulse(
   const motionTime = reducedMotion ? time * 0.04 : time;
   frame[0] = fullPath(config, "current", pathData, colorAt(config, motionTime, 0.2), lineWidth * config.width * 0.5, config.opacity * config.intensity * 0.14);
   const count = Math.min(3, config.streamCount);
+  const heartbeatCycles = config.pulseRhythm === "heartbeat" ? getHeartbeatCycles(motionTime, config.speed) : 0;
+  const heartbeatRamp = clamp01(motionTime / HEARTBEAT_RAMP_DURATION);
+  const heartbeatStrength = config.pulseRhythm === "heartbeat"
+    ? 0.5 + 1.35 * heartbeatRamp
+    : 1;
   for (let index = 0; index < count; index++) {
-    const { progress, direction } = streamProgress(config, motionTime, index, count);
-    const window = extractWindow(geometry, progress, config.pulseWidth, direction);
+    const { progress: initialProgress, direction } = streamProgress(config, motionTime, index, count);
+    let progress = initialProgress;
+    if (config.pulseRhythm === "heartbeat") {
+      const rawCyclePhase = modulo(
+        heartbeatCycles * direction + config.phase + index / Math.max(1, count),
+      );
+      const cyclePhase = rawCyclePhase > 1 - 1e-10 ? 0 : rawCyclePhase;
+      const travelPhase = direction > 0 ? cyclePhase : modulo(1 - cyclePhase);
+      const beat = HEARTBEAT_BEAT_WINDOWS.find(([start, end]) => travelPhase >= start && travelPhase < end);
+      if (!beat) continue;
+      const pulseProgress = clamp01((travelPhase - beat[0]) / (beat[1] - beat[0]));
+      const travelDistance = pulseProgress * (1 - config.pulseWidth);
+      progress = direction > 0
+        ? config.pulseWidth + travelDistance
+        : 1 - config.pulseWidth - travelDistance;
+    }
+    const intensity = config.opacity * config.intensity * heartbeatStrength;
+    const coreColor = config.coreColor;
+    const glowColor = config.glowColor;
+    const pulseScale = config.pulseRhythm === "heartbeat" ? 1 + heartbeatRamp * 0.45 : 1;
+    const dashOptions = geometry
+      ? {}
+      : {
+          dashArray: `${config.pulseWidth} ${1 - config.pulseWidth}`,
+          dashOffset: direction > 0 ? config.pulseWidth - progress : -progress,
+        };
+    const window = geometry ? extractWindow(geometry, progress, config.pulseWidth, direction) : pathData;
     frame[1 + index * 2] = config.layers.glow
-      ? layer(window, config.glowColor, lineWidth * config.glowWidth, config.opacity * config.intensity * 0.2, { blur: Math.max(0.75, lineWidth * config.glowWidth * 0.65) })
+      ? layer(window, glowColor, lineWidth * config.glowWidth * pulseScale, intensity * 0.42, {
+          blur: Math.max(0.75, lineWidth * config.glowWidth * pulseScale * 0.65),
+          ...dashOptions,
+        })
       : null;
-    frame[2 + index * 2] = fullPath(config, "core", window, config.coreColor, lineWidth * config.coreWidth, config.opacity * config.intensity);
+    frame[2 + index * 2] = config.layers.core
+      ? layer(window, coreColor, lineWidth * config.coreWidth * pulseScale, intensity, dashOptions)
+      : null;
   }
   return frame;
 }
@@ -448,6 +506,23 @@ export function renderFlowEffect(
 ): Array<FlowLayerFrame | null> {
   return FLOW_EFFECT_RENDERERS[config.effectType](
     geometry,
+    pathData,
+    config,
+    Math.max(0, time),
+    Math.max(0.25, lineWidth),
+    reducedMotion,
+  );
+}
+
+export function renderHeartbeatPulsePathEffect(
+  pathData: string,
+  config: FlowConfig,
+  time: number,
+  lineWidth: number,
+  reducedMotion: boolean,
+): Array<FlowLayerFrame | null> {
+  return energyPulse(
+    null,
     pathData,
     config,
     Math.max(0, time),

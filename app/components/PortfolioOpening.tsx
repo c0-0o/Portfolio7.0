@@ -2,7 +2,18 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { DEFAULT_SCENE, MagneticBackgroundLines, MagneticTarget } from "@/lib/magnetic-lines";
+import {
+  loadPageScenePreview,
+  loadPersistedPageScene,
+  MagneticBackgroundLines,
+  MagneticTarget,
+  savePersistedPageScene,
+  SCENE_CHANGE_EVENT,
+  type MagneticLinesSceneConfig,
+} from "@/lib/magnetic-lines";
+import { getHeartbeatCycles } from "@/lib/magnetic-lines/engine/flowEngine";
+import { getPortfolioDefaultScene, PORTFOLIO_OPENING_SCENE_EVENT } from "@/lib/magnetic-lines/PersistentMagneticBackground";
+import { markPortfolioVisited, shouldShowPortfolioOpening } from "./openingState";
 
 const openingLetters = [
   { src: "/opening/Vector-2.svg", width: 141, height: 204, className: "opening-letter opening-letter-p" },
@@ -16,78 +27,97 @@ const openingLetters = [
   { src: "/opening/Vector-4.svg", width: 63, height: 71, className: "opening-letter opening-letter-bottom-o" },
 ];
 
-const tetherPoints = [
-  { from: { x: 0.23, y: 0.18 }, to: { x: 0.38, y: 0.4 } },
-  { from: { x: 0.58, y: 0.18 }, to: { x: 0.45, y: 0.4 } },
-  { from: { x: 0.24, y: 0.75 }, to: { x: 0.38, y: 0.55 } },
-];
+const openingScene = getPortfolioDefaultScene("/opening");
+const OPENING_MOTION_MIGRATION_KEY = "portfolio-opening-motion-version";
+const OPENING_MOTION_VERSION = "heartbeat-v2";
 
-const openingScene = {
-  ...DEFAULT_SCENE,
-  global: {
-    ...DEFAULT_SCENE.global,
-    color: "#91d63d",
-    colorStyle: { type: "solid" as const, colors: ["#91d63d"] },
-    opacity: 0.64,
-    width: 1.25,
-    magnetismEnabled: true,
-    glowEnabled: false,
-    outerGlowEnabled: false,
-  },
-  lines: DEFAULT_SCENE.lines.slice(0, tetherPoints.length).map((line, index) => {
-    const { from, to } = tetherPoints[index];
-    return {
-      ...line,
-      id: `opening-tether-${index + 1}`,
-      enabled: true,
-      visible: true,
-      from,
-      to,
-      customPath: {
-        ...line.customPath,
-        points: [
-          { id: `opening-tether-${index + 1}-start`, ...from },
-          { id: `opening-tether-${index + 1}-end`, ...to },
-        ],
-      },
-      inherit: {
-        ...line.inherit,
-        appearance: true,
-        shape: false,
-        motion: false,
-        magnet: false,
-        glow: false,
-        outerGlow: false,
-      },
-      shape: { ...line.shape, type: "soft-wave" as const, amplitude: 0.008, frequency: 1.2, cycles: 1, smoothness: 0.95 },
-      motion: { ...line.motion, type: "tension" as const, speed: 0.12, amplitude: 0.006, frequency: 1, deformability: 0.75 },
-      magnet: {
-        ...line.magnet,
-        targetId: "opening-p",
-        enabled: true,
-        strength: 90,
-        radius: 0.12,
-        falloff: 70,
-        maxDeformation: 0.09,
-      },
-      glow: { ...line.glow, enabled: false },
-      outerGlow: { ...line.outerGlow, enabled: false },
-      cursorGlow: { enabled: false },
-      appearance: { ...line.appearance, color: "#91d63d", opacity: 0.64, width: 1.25, zIndex: 2 },
-    };
-  }),
-  targets: [],
-};
+function updateOpeningMotion(scene: MagneticLinesSceneConfig): MagneticLinesSceneConfig {
+  const defaultsById = new Map(openingScene.lines.map((line) => [line.id, line]));
+  let changed = false;
+  const lines = scene.lines.map((line) => {
+    const defaults = defaultsById.get(line.id);
+    if (!defaults || line.id.includes("-node-")) return line;
+
+    const points = line.customPath.points;
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const direction: "forward" | "reverse" = firstPoint.x > 0.5 && lastPoint.x > firstPoint.x
+      ? "reverse"
+      : "forward";
+    const directionSign = direction === "reverse" ? -1 : 1;
+    const phase = ((-directionSign * getHeartbeatCycles(line.startDelay ?? 0, defaults.flow.speed)) % 1 + 1) % 1;
+    const flow = { ...line.flow, ...defaults.flow, direction, phase };
+
+    if (JSON.stringify(flow) === JSON.stringify(line.flow)) return line;
+    changed = true;
+    return { ...line, flow };
+  });
+
+  return changed ? { ...scene, lines } : scene;
+}
+
+function loadOpeningScene(): MagneticLinesSceneConfig {
+  const savedScene = loadPersistedPageScene("/opening");
+  if (!savedScene) return openingScene;
+  try {
+    if (localStorage.getItem(OPENING_MOTION_MIGRATION_KEY) === OPENING_MOTION_VERSION) return savedScene;
+  } catch (error) {
+    console.error("Could not check the saved opening animation version.", error);
+    return updateOpeningMotion(savedScene);
+  }
+
+  const updatedScene = updateOpeningMotion(savedScene);
+  try {
+    localStorage.setItem(OPENING_MOTION_MIGRATION_KEY, OPENING_MOTION_VERSION);
+    if (updatedScene !== savedScene && !savePersistedPageScene("/opening", updatedScene)) {
+      try {
+        localStorage.removeItem(OPENING_MOTION_MIGRATION_KEY);
+      } catch (error) {
+        console.error("Could not reset the opening animation migration marker.", error);
+      }
+      console.error("Could not save the updated opening animation settings.");
+    }
+  } catch (error) {
+    console.error("Could not migrate the saved opening animation settings.", error);
+  }
+
+  return updatedScene;
+}
 
 export function PortfolioOpening({ autoDismiss = true }: { autoDismiss?: boolean }) {
   const [isExiting, setIsExiting] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(shouldShowPortfolioOpening);
+  const [scene, setScene] = useState<MagneticLinesSceneConfig>(openingScene);
+
+  useEffect(() => {
+    markPortfolioVisited();
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(PORTFOLIO_OPENING_SCENE_EVENT, { detail: isVisible }));
+  }, [isVisible]);
+
+  useEffect(() => {
+    const updateScene = () => {
+      const previewToken = new URLSearchParams(window.location.search).get("magneticPreview");
+      const previewScene = previewToken ? loadPageScenePreview("/opening", previewToken) : null;
+      setScene(previewScene ?? loadOpeningScene());
+    };
+
+    updateScene();
+    window.addEventListener(SCENE_CHANGE_EVENT, updateScene);
+    window.addEventListener("storage", updateScene);
+    return () => {
+      window.removeEventListener(SCENE_CHANGE_EVENT, updateScene);
+      window.removeEventListener("storage", updateScene);
+    };
+  }, []);
 
   useEffect(() => {
     if (!autoDismiss) return;
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const exitTimer = window.setTimeout(() => setIsExiting(true), prefersReducedMotion ? 500 : 2400);
-    const hideTimer = window.setTimeout(() => setIsVisible(false), prefersReducedMotion ? 650 : 3050);
+    const exitTimer = window.setTimeout(() => setIsExiting(true), prefersReducedMotion ? 500 : 10_000);
+    const hideTimer = window.setTimeout(() => setIsVisible(false), prefersReducedMotion ? 650 : 10_650);
 
     return () => {
       window.clearTimeout(exitTimer);
@@ -106,7 +136,12 @@ export function PortfolioOpening({ autoDismiss = true }: { autoDismiss?: boolean
       aria-hidden={isExiting}
     >
       <div className="opening-backdrop" />
-      <MagneticBackgroundLines config={openingScene} style={{ zIndex: 1, pointerEvents: "none" }} />
+      <MagneticBackgroundLines
+        config={scene}
+        className="opening-lines"
+        openingAnimation
+        style={{ zIndex: 1, pointerEvents: "none" }}
+      />
       <div className="opening-role">
         <span className="opening-role-dot" aria-hidden="true" />
         <span>UI/UX Designer</span>

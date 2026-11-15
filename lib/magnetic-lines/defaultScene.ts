@@ -18,6 +18,7 @@ const DEFAULT_LINE_COLOR_STYLE: LineColorStyle = { type: "solid", colors: ["#8fa
 export const DEFAULT_FLOW: FlowConfig = {
   enabled: false,
   effectType: "electric-current",
+  pulseRhythm: "continuous",
   preset: null,
   speed: 0.55,
   colorSpeed: 0.08,

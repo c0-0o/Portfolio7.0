@@ -25,6 +25,7 @@ import { FLOW_PRESETS } from "../flowPresets";
 import { SceneTemplateLibrary } from "./SceneTemplateLibrary";
 
 const STORAGE_KEY = "magnetic-lines-editor:v1";
+const EDITOR_PAGE_PATH_KEY = "magnetic-lines-editor-page:v1";
 
 type TexturePreset = Pick<MagneticLineConfig["texture"], "type" | "scale" | "intensity" | "weight"> & {
   id: string;
@@ -1207,16 +1208,35 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
+      let restoredPagePath: string | null = null;
       try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const restored = sanitizeSceneConfig(JSON.parse(raw));
-          setConfig(restored);
-          setSelectedLineId(restored.lines[0]?.id || null);
-          setGlobalTargetLineId(restored.lines[0]?.id || null);
-        }
+        restoredPagePath = normalizeMagneticPagePath(
+          window.sessionStorage.getItem(EDITOR_PAGE_PATH_KEY) ?? "",
+        );
       } catch {
-        /* ignore corrupt localStorage */
+        // The editor can still load its default page when session storage is unavailable.
+      }
+
+      if (restoredPagePath) {
+        const restoredScene = loadPersistedPageScene(restoredPagePath) ?? getPortfolioDefaultScene(restoredPagePath);
+        loadedPagePathRef.current = restoredPagePath;
+        sceneLoadedIntoEditorRef.current = restoredScene;
+        setPagePath(restoredPagePath);
+        setConfig(restoredScene);
+        setSelectedLineId(restoredScene.lines[0]?.id ?? null);
+        setGlobalTargetLineId(restoredScene.lines[0]?.id ?? null);
+      } else {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const restored = sanitizeSceneConfig(JSON.parse(raw));
+            setConfig(restored);
+            setSelectedLineId(restored.lines[0]?.id || null);
+            setGlobalTargetLineId(restored.lines[0]?.id || null);
+          }
+        } catch {
+          /* ignore corrupt localStorage */
+        }
       }
       setPagePaths(listMagneticPagePaths());
       setSavedLineShapes(listReusableLineShapes());
@@ -1233,6 +1253,15 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     setConfig(scene);
     setSelectedLineId(scene.lines[0]?.id ?? null);
     setGlobalTargetLineId(scene.lines[0]?.id ?? null);
+  }, [pagePath, storageLoaded]);
+
+  useEffect(() => {
+    if (!storageLoaded) return;
+    try {
+      window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, pagePath);
+    } catch {
+      // Route restoration is best-effort when session storage is unavailable.
+    }
   }, [pagePath, storageLoaded]);
 
   // Persist to localStorage (debounced) and notify consumer.
@@ -1421,7 +1450,25 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
 
   // Poll the live target registry for the Targets panel (cheap, dev-tool only).
   useEffect(() => {
-    const id = setInterval(() => setTargetSnapshots(getAllTargetSnapshots()), 300);
+    const id = setInterval(() => {
+      const nextSnapshots = getAllTargetSnapshots();
+      setTargetSnapshots((currentSnapshots) => {
+        const unchanged = currentSnapshots.length === nextSnapshots.length &&
+          currentSnapshots.every((current, index) => {
+            const next = nextSnapshots[index];
+            return current.id === next.id &&
+              current.active === next.active &&
+              current.visible === next.visible &&
+              current.magnetic === next.magnetic &&
+              current.priority === next.priority &&
+              current.rect?.left === next.rect?.left &&
+              current.rect?.top === next.rect?.top &&
+              current.rect?.right === next.rect?.right &&
+              current.rect?.bottom === next.rect?.bottom;
+          });
+        return unchanged ? currentSnapshots : nextSnapshots;
+      });
+    }, 300);
     return () => clearInterval(id);
   }, []);
 
@@ -2755,6 +2802,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
 
   function saveAndOpenTestPage() {
     if (!savePendingPageScene(pagePath, config)) return;
+    try {
+      window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, pagePath);
+    } catch {
+      // The saved page remains available even when route restoration cannot be persisted.
+    }
     router.push(pagePath);
   }
 
@@ -2811,6 +2863,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     commitDiscrete(() => scene);
     selectLineForEditing(scene.lines[0]?.id ?? null);
     setPagePath(path);
+    try {
+      window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, path);
+    } catch {
+      // Route restoration is best-effort when session storage is unavailable.
+    }
   }
 
   function openPagePreview(pickTarget = false) {
@@ -4758,6 +4815,20 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                 )}
                 {selectedLine.geometrySource === "path" && (
                   <>
+                    <SliderField
+                      label="Curve smoothing"
+                      description="Rounds editable path corners with a smooth curve through their control points. Set to 0 to preserve sharp corners."
+                      value={selectedLine.customPath.curveSmoothing ?? 0}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      onCommitStart={captureBeforeChange}
+                      onCommitEnd={commitPending}
+                      onLive={(curveSmoothing) => updateLineLive(selectedLine.id, (line) => ({
+                        ...line,
+                        customPath: { ...line.customPath, curveSmoothing },
+                      }))}
+                    />
                     <button className="ml-btn" onClick={addPathPoint}>Add point</button>
                     <button className="ml-btn ml-danger" disabled={!selectedPathPointId || selectedLine.customPath.points.length <= 2} onClick={deletePathPoint}>Delete selected point</button>
                     <small className="ml-gradient-help">Drag any two points within 12 px to merge them. Drag the first point onto the last to close the path.</small>
