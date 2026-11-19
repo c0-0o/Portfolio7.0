@@ -434,6 +434,10 @@ export const CURSOR_EFFECTS_STORAGE_KEY = "magnetic-lines-cursor-effects:v1";
 export const CURSOR_EFFECTS_APPLIED_KEY = `${CURSOR_EFFECTS_STORAGE_KEY}:applied`;
 export const CURSOR_EFFECTS_CHANGE_EVENT = "magnetic-lines-cursor-effects-change";
 
+export function shouldUseDefaultCursor(applied: string | null, storedConfig: string | null): boolean {
+  return applied === null && storedConfig === null;
+}
+
 const cursorIds = new Set<CursorPresetId>([
   "native",
   "custom-image",

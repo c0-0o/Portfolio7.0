@@ -1,17 +1,20 @@
 # Magnetic Background Lines System
 
-A data-driven, configurable magnetic-line background for a Next.js site, plus a
-dev-only visual editor that art-directs it. One engine powers both — the
-editor's preview *is* the production component (`interactive` prop just adds
-selection/handles/debug on top).
+A data-driven, configurable magnetic-line background for a Next.js site, plus an
+optional dev-only visual editor that art-directs it. One engine powers both —
+the editor's preview *is* the production component (`interactive` prop just adds
+selection/handles/debug on top). The production entry point does not import the
+editor folder, so the background continues to work if the editor and its route
+are removed later.
 
 For a focused, editor-only feature and workflow guide, see the project
 [`README.md`](../../README.md).
 
 ## Install
 
-Drop the `magnetic-lines/` folder into your project (e.g. `src/lib/magnetic-lines/`).
-No extra dependencies — just React + TypeScript, which you already have.
+Drop the production files from `magnetic-lines/` into your project (e.g.
+`src/lib/magnetic-lines/`). The background has no extra dependencies beyond
+React + TypeScript; the optional editor folder is not required.
 
 ## Production usage
 
@@ -40,9 +43,14 @@ route scene shown on the live page, including its built-in default when no
 override exists. Edits are saved automatically to the selected route; **Use
 page default** removes that route's override.
 Built-in routes and routes visited in this browser appear in the dropdown;
-saved overrides remain listed until removed. Like the editor's existing
-Save & Test workflow, route assignments are saved in the current browser's
-local storage.
+saved overrides remain listed until removed. Page scene edits are written to
+`data/magnetic-page-scenes.json` through the development server, so they persist
+across browser sessions and are tracked with the project. Commit that file to
+ship the saved backgrounds. Browser storage is only a preview/cache; existing
+browser-only scene overrides are imported into the project file once, on the
+first development-editor sync. The client loads project scenes through the
+server API instead of importing the editable JSON file, so auto-saves do not
+force a full development-page reload.
 Visited routes are collected automatically in the editor's page dropdown.
 **Preview page** shows the selected route inside the editor with the current
 in-progress scene, without navigating away or requiring the scene to be saved.
@@ -116,7 +124,7 @@ Mount it on any dev-only route, e.g. `app/dev/magnetic-editor/page.tsx`:
 
 ```tsx
 "use client";
-import { MagneticLinesEditor } from "@/lib/magnetic-lines";
+import { MagneticLinesEditor } from "@/lib/magnetic-lines/editor/MagneticLinesEditor";
 
 export default function Page() {
   if (process.env.NODE_ENV === "production") return null;
@@ -139,10 +147,10 @@ registrations remain available for code-defined targets. Open **Preview page**
 to validate saved selectors against the actual route; missing or ambiguous
 selectors are reported in the Targets panel and can be re-picked there.
 
-The editor autosaves its working config to `localStorage` (so a refresh
-doesn't lose your work) and exposes **Export → Copy / Download** to get a
-clean `MagneticLinesSceneConfig` JSON you paste into your production code
-(or fetch at build/runtime). Production never reads `localStorage`.
+The editor still keeps temporary workspace state and reusable shapes/templates
+in `localStorage`. Selected page backgrounds autosave to the project file above;
+the editor API is development-only, and production reads the committed file.
+**Export → Copy / Download** remains available for standalone scene configs.
 
 ## What's genuinely implemented
 
@@ -150,6 +158,9 @@ clean `MagneticLinesSceneConfig` JSON you paste into your production code
   production and the editor's live preview — not two renderers.
 - Three motion types (tension / floating / vibration), each with an
   envelope that anchors the ends and concentrates movement mid-line.
+- Motion speed is cycles per second and amplitude is peak displacement;
+  spatial frequency applies to floating/vibration (not tension), while
+  magnetic response is a separate setting.
 - Per-line motion start delays let matching lines begin at different times
   while preserving their configured motion speed and phase.
 - Magnetic pull toward the **target's perimeter** (nearest point on its
@@ -199,7 +210,10 @@ wider radii spread the wind across more of a line. Colored lights have draggable
   in that same animation loop, in both the editor and production renderer. The
   initial set includes electric current, continuous light, plasma, fiber optic,
   and energy pulse effects, with global defaults, per-line overrides, editable
-  movement/appearance/layers, and 15 bundled presets. Flow settings are
+  placement, movement, appearance, pulse rhythm, layers, and 15 bundled presets.
+  Selected-line editor previews keep enabled flow and silk effects moving while
+  line geometry is paused, so effect changes remain visible during editing.
+  Flow settings are
   backward-compatible with older saved scenes and do not alter the line's
   material texture. On silk, effects follow each filament at a matching
   thread-scale width; on rope, they follow the braid plies. Paper, beads, and
@@ -345,7 +359,8 @@ engine/lineEngine.ts         The one per-frame compute function
 useMagneticTarget.tsx        Hook + <MagneticTarget> wrapper for registration
 MagneticBackgroundLines.tsx  Production component (also used as editor preview)
 defaultScene.ts              Starter 12-line deterministic composition + presets
-editor/validate.ts           Import sanitation/clamping, line factory helpers
+sceneValidation.ts           Import sanitation/clamping, line factory helpers
+shapePresets.ts               Generated shape geometry used by scenes and editor
 editor/history.ts            Coalescing undo/redo stack
 editor/MagneticLinesEditor.tsx  The full visual editor
 index.ts                     Barrel export

@@ -198,15 +198,6 @@ function colorAt(config: FlowConfig, time: number, position = 0): string {
     Math.round(channel + (second[component] - channel) * amount).toString(16).padStart(2, "0")).join("")}`;
 }
 
-function blendColors(start: string, end: string, amount: number): string {
-  const first = parseHex(start);
-  const second = parseHex(end);
-  const progress = clamp01(amount);
-  return `#${first.map((channel, index) =>
-    Math.round(channel + (second[index] - channel) * progress).toString(16).padStart(2, "0"),
-  ).join("")}`;
-}
-
 function streamProgress(config: FlowConfig, time: number, index: number, count: number): { progress: number; direction: 1 | -1 } {
   let direction: 1 | -1 = config.direction === "reverse" ? -1 : 1;
   if (config.direction === "both") direction = index % 2 === 0 ? 1 : -1;
@@ -503,15 +494,50 @@ export function renderFlowEffect(
   time: number,
   lineWidth: number,
   reducedMotion: boolean,
+  placementWidth = lineWidth,
 ): Array<FlowLayerFrame | null> {
-  return FLOW_EFFECT_RENDERERS[config.effectType](
-    geometry,
-    pathData,
+  const render = FLOW_EFFECT_RENDERERS[config.effectType];
+  const safeLineWidth = Math.max(0.25, lineWidth);
+  const offsets: number[] = config.placement === "around"
+    ? [-0.55, 0.55]
+    : config.placement === "outside"
+      ? [-1.25, 1.25]
+      : config.placement === "mixed"
+        ? [-0.8, 0, 0.8]
+        : [0];
+  const widthScale = config.placement === "inside" ? 0.55 : 1;
+  const offsetScale = Math.max(0.25, placementWidth);
+  const variants = offsets.map((offset) => {
+    if (offset === 0) return { geometry, pathData, offset };
+    const points = geometry.paths.map((path) => path.map((sample) => ({
+      x: sample.point.x + sample.normal.x * offset * offsetScale,
+      y: sample.point.y + sample.normal.y * offset * offsetScale,
+    })));
+    const placedGeometry = createFlowGeometry(
+      points.flat(),
+      points.map((path) => path.length),
+    );
+    return { geometry: placedGeometry, pathData: placedGeometry.pathData, offset };
+  });
+  const framesByPlacement = variants.map((variant) => render(
+    variant.geometry,
+    variant.pathData,
     config,
     Math.max(0, time),
-    Math.max(0.25, lineWidth),
+    safeLineWidth * widthScale,
     reducedMotion,
-  );
+  ));
+
+  return Array.from({ length: FLOW_LAYER_COUNT }, (_, index) => {
+    const frames = framesByPlacement
+      .map((frames) => frames[index])
+      .filter((frame): frame is FlowLayerFrame => frame !== null);
+    if (frames.length === 0) return null;
+    return {
+      ...frames[0],
+      pathData: frames.map((frame) => frame.pathData).join(" "),
+    };
+  });
 }
 
 export function renderHeartbeatPulsePathEffect(

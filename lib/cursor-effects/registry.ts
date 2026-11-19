@@ -352,6 +352,12 @@ export function getCursorDefinition(id: string): CursorDefinition | undefined {
   return definitions.get(id);
 }
 
+export function getDefaultWebsiteCursorConfig(): CursorEffectsConfig {
+  const definition = getCursorDefinition("pointer");
+  if (!definition) throw new Error("The Classic Pointer cursor is not registered.");
+  return definition.defaultConfig();
+}
+
 export function getCursorDefinitions(): CursorDefinition[] {
   return Array.from(definitions.values());
 }

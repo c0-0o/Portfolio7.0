@@ -2,7 +2,13 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const fs = require("node:fs");
+const fsPromises = require("node:fs/promises");
+const { mkdtemp, rm } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
 const ts = require("typescript");
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
 
 require.extensions[".ts"] = (module, filename) => {
   const source = fs.readFileSync(filename, "utf8");
@@ -15,16 +21,36 @@ require.extensions[".ts"] = (module, filename) => {
   module._compile(output, filename);
 };
 
+require.extensions[".tsx"] = (module, filename) => {
+  const source = fs.readFileSync(filename, "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      jsx: ts.JsxEmit.React,
+    },
+  }).outputText;
+  module._compile(output, filename);
+};
+
 const { createAirflowField, getAirflowBehaviorEnvelope, getEnvironmentLightPosition, getEnvironmentLights, resolveLineAirflowPath, resolveLineAirflowPaths, resolveLineAirflowRadii, resolveLineEnvironment, smoothAirflowPath } = require("../lib/magnetic-lines/environment.ts");
 const { getTextureGravityResponse, getTextureLightResponse, getTextureMaterialResponse } = require("../lib/magnetic-lines/texture.ts");
-const { makeBlankLine, sanitizeSceneConfig } = require("../lib/magnetic-lines/editor/validate.ts");
-const { createGeneratedShapePath } = require("../lib/magnetic-lines/editor/shapePresets.ts");
+const { makeBlankLine, sanitizeSceneConfig } = require("../lib/magnetic-lines/sceneValidation.ts");
+const { createGeneratedShapePath } = require("../lib/magnetic-lines/shapePresets.ts");
 const { DEFAULT_SCENE } = require("../lib/magnetic-lines/defaultScene.ts");
-const { computeLine, createLineRuntimeState } = require("../lib/magnetic-lines/engine/lineEngine.ts");
+const DEFAULT_STARTER_SCENE = structuredClone(DEFAULT_SCENE);
+const { importLegacyProjectPageScenes, readProjectPageScenes, removeProjectPageScene, saveProjectPageScene } = require("../lib/magnetic-lines/projectSceneStore.ts");
+const { getActivePortfolioBackgroundScene, getPortfolioDefaultScene } = require("../lib/magnetic-lines/PersistentMagneticBackground.tsx");
+const projectScenes = require("../data/magnetic-page-scenes.json").scenes;
+const { getProjectPageScene, replaceProjectPageScenes } = require("../lib/magnetic-lines/projectPageScenes.ts");
+const { listMagneticPagePaths, PAGE_SCENES_STORAGE_KEY, savePersistedPageScene } = require("../lib/magnetic-lines/persistence.ts");
+const { ABOUT_BOTTOM_ALIGNED_LINE_IDS, ABOUT_FLOW_LINE_IDS, ABOUT_PATTERN_ASPECT_RATIO, ABOUT_REFERENCE_ARC_POINTS, ABOUT_REFERENCE_GRID_POINTS, normalizePortfolioPageScene } = require("../lib/magnetic-lines/portfolioScene.ts");
+const { computeLine, createLineRuntimeState, getCustomPathPointsInViewport, customPathPointFromViewport, hasActiveInteractionFrame, shouldScheduleAnimationFrame } = require("../lib/magnetic-lines/engine/lineEngine.ts");
 const { resolveLineConfig } = require("../lib/magnetic-lines/engine/resolveConfig.ts");
 const { getTargetAssignedLineIds, updateTargetLineAssignments } = require("../lib/magnetic-lines/editor/targetAssignments.ts");
-const { computeLineInteractionOffsets } = require("../lib/magnetic-lines/engine/lineInteraction.ts");
-const { getActiveTargets, registerTarget, setTargetActive } = require("../lib/magnetic-lines/engine/targetRegistry.ts");
+const { computeLineInteractionOffsets, computeNeighborGlowTargets } = require("../lib/magnetic-lines/engine/lineInteraction.ts");
+const { getActiveTargets, registerTarget, setTargetActive, updateTargetOptions } = require("../lib/magnetic-lines/engine/targetRegistry.ts");
+const { useHistory } = require("../lib/magnetic-lines/editor/history.ts");
 
 const baseEnvironment = {
   enabled: true,
@@ -40,6 +66,22 @@ const baseEnvironment = {
   lightIntensity: 0.4,
   lightRadius: 0.3,
 };
+
+test("clearing editor history removes undo and redo snapshots from the previous page", () => {
+  let history;
+  function HistoryHarness() {
+    history = useHistory();
+    return null;
+  }
+  renderToStaticMarkup(React.createElement(HistoryHarness));
+
+  history.commit("home-before");
+  assert.equal(history.undo("home-after"), "home-before");
+  history.clear();
+
+  assert.equal(history.undo("about"), null);
+  assert.equal(history.redo("about"), null);
+});
 
 test("airflow follows its drawn direction and eases strength with distance", () => {
   const airflow = createAirflowField(baseEnvironment, { width: 1000, height: 1000 });
@@ -562,6 +604,126 @@ test("cursor influence bends a gravity-sagged line while keeping gravity pins fi
   assert.ok(releasedCursorOffset < activeCursorOffset, "cursor influence eases away after the pointer leaves");
 });
 
+test("repel cursor influence moves a line when the pointer is centered on it", () => {
+  const scene = structuredClone(DEFAULT_SCENE);
+  const line = structuredClone(scene.lines[0]);
+  line.from = { x: 0.1, y: 0.5 };
+  line.to = { x: 0.9, y: 0.5 };
+  line.inherit = {
+    ...line.inherit,
+    shape: false,
+    motion: false,
+    magnet: false,
+    cursorInfluence: false,
+  };
+  line.shape = { ...line.shape, type: "straight", amplitude: 0, bendable: true };
+  line.motion = { ...line.motion, enabled: false, amplitude: 0, speed: 0 };
+  line.anchorMotion = {
+    ...line.anchorMotion,
+    start: { ...line.anchorMotion.start, enabled: false },
+    end: { ...line.anchorMotion.end, enabled: false },
+  };
+  line.magnet = { ...line.magnet, enabled: false };
+  line.gravity = { enabled: false, strength: 0, fixedPointIds: [] };
+  line.cursorInfluence = {
+    ...line.cursorInfluence,
+    enabled: true,
+    strength: 1,
+    radius: 0.5,
+    falloff: 0.5,
+    maxDeformation: 0.1,
+    profile: "balanced",
+    smoothing: 0,
+    mode: "repel",
+  };
+  scene.lines = [line];
+
+  const config = resolveLineConfig(line, scene.global);
+  const state = createLineRuntimeState();
+  let result;
+  for (let frame = 0; frame < 36; frame++) {
+    result = computeLine(
+      config,
+      scene,
+      state,
+      frame / 60,
+      1 / 60,
+      { width: 1000, height: 800 },
+      { x: 500, y: 400, active: true },
+    );
+  }
+  const baseline = computeLine(
+    { ...config, cursorInfluence: { ...config.cursorInfluence, enabled: false } },
+    scene,
+    createLineRuntimeState(),
+    0,
+    1 / 60,
+    { width: 1000, height: 800 },
+    null,
+  );
+
+  assert.ok(Math.abs(result.points[12].y - 400) > Math.abs(baseline.points[12].y - 400));
+});
+
+test("motion speed is cycles per second and amplitude remains consistent across types", () => {
+  const scene = structuredClone(DEFAULT_SCENE);
+  const line = structuredClone(scene.lines[0]);
+  line.from = { x: 0.1, y: 0.5 };
+  line.to = { x: 0.9, y: 0.5 };
+  line.inherit = {
+    ...line.inherit,
+    shape: false,
+    motion: false,
+    magnet: false,
+    cursorInfluence: false,
+  };
+  line.shape = { ...line.shape, type: "straight", amplitude: 0, bendable: true };
+  line.anchorMotion = {
+    ...line.anchorMotion,
+    start: { ...line.anchorMotion.start, enabled: false },
+    end: { ...line.anchorMotion.end, enabled: false },
+  };
+  line.motion = {
+    ...line.motion,
+    enabled: true,
+    speed: 0.5,
+    amplitude: 0.02,
+    frequency: 1.5,
+    phase: 0.35,
+  };
+  line.magnet = { ...line.magnet, enabled: false };
+  line.gravity = { enabled: false, strength: 0, fixedPointIds: [] };
+  line.cursorInfluence = { ...line.cursorInfluence, enabled: false };
+  scene.lines = [line];
+
+  const config = resolveLineConfig(line, scene.global);
+  const pointsAt = (type, time, amplitude = config.motion.amplitude) => computeLine(
+    { ...config, motion: { ...config.motion, type, amplitude } },
+    scene,
+    createLineRuntimeState(),
+    time,
+    1 / 60,
+    { width: 1000, height: 800 },
+    null,
+  ).points;
+  const maxDisplacement = (points) => Math.max(...points.map((point) => Math.abs(point.y - 400)));
+  const maxDifference = (left, right) => Math.max(...left.map((point, index) =>
+    Math.hypot(point.x - right[index].x, point.y - right[index].y)));
+
+  for (const type of ["tension", "floating", "vibration"]) {
+    const start = pointsAt(type, 0);
+    const afterOneCycle = pointsAt(type, 2);
+    const quarterCycle = pointsAt(type, 0.5);
+    assert.ok(maxDifference(start, afterOneCycle) < 1e-6, `${type} repeats after 1 / speed seconds`);
+    assert.ok(maxDifference(start, quarterCycle) > 1e-4, `${type} changes during its cycle`);
+
+    const halfAmplitude = maxDisplacement(pointsAt(type, 0.5, 0.01));
+    const fullAmplitude = maxDisplacement(pointsAt(type, 0.5, 0.02));
+    assert.ok(halfAmplitude > 1e-6, `${type} produces measurable displacement`);
+    assert.ok(Math.abs(fullAmplitude / halfAmplitude - 2) < 1e-6, `${type} amplitude scales linearly`);
+  }
+});
+
 test("rigid custom shapes keep their exact contour despite motion and interactive forces", () => {
   const scene = structuredClone(DEFAULT_SCENE);
   const line = structuredClone(scene.lines[0]);
@@ -716,6 +878,736 @@ test("legacy lines without gravity settings keep rendering unchanged", () => {
 
   assert.equal(result.points.length, 24);
   assert.ok(result.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
+});
+
+test("artboard custom paths share one responsive transform and retain editable coordinates", () => {
+  const scene = structuredClone(DEFAULT_SCENE);
+  const firstLine = structuredClone(scene.lines[0]);
+  const secondLine = structuredClone(scene.lines[1]);
+  const points = [
+    { id: "shared", x: 0.1, y: 0.2 },
+    { id: "edge", x: 0.3, y: 0.4 },
+  ];
+  firstLine.customPath = { points, aspectRatio: 1720 / 768, aspectRatioMode: "artboard" };
+  secondLine.customPath = {
+    points: [{ ...points[0] }, { id: "wide-edge", x: 0.9, y: 0.8 }],
+    aspectRatio: 1720 / 768,
+    aspectRatioMode: "artboard",
+  };
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const firstRendered = getCustomPathPointsInViewport(firstLine, viewport);
+    const secondRendered = getCustomPathPointsInViewport(secondLine, viewport);
+    const frameHeight = viewport.width / (1720 / 768);
+
+    assert.deepEqual(
+      { x: firstRendered[0].x, y: firstRendered[0].y },
+      { x: secondRendered[0].x, y: secondRendered[0].y },
+    );
+    assert.ok(Math.abs(firstRendered[0].x - points[0].x) < 1e-10);
+    assert.ok(Math.abs(firstRendered[0].y - points[0].y * (frameHeight / viewport.height)) < 1e-10);
+
+    const restoredPoint = customPathPointFromViewport(firstLine, viewport, firstRendered[0]);
+    assert.ok(Math.abs(restoredPoint.x - points[0].x) < 1e-10);
+    assert.ok(Math.abs(restoredPoint.y - points[0].y) < 1e-10);
+  }
+
+  scene.lines = [firstLine];
+  assert.equal(sanitizeSceneConfig(scene).lines[0].customPath.aspectRatioMode, "artboard");
+});
+
+test("bottom-aligned artboard paths reach the viewport bottom and retain editable coordinates", () => {
+  const line = structuredClone(DEFAULT_SCENE.lines[0]);
+  const points = [
+    { id: "start", x: 0.1, y: 0.2 },
+    { id: "bottom", x: 0.3, y: 1 },
+  ];
+  line.customPath = {
+    points,
+    aspectRatio: ABOUT_PATTERN_ASPECT_RATIO,
+    aspectRatioMode: "artboard",
+    aspectRatioAlignY: "bottom",
+  };
+
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 832, height: 703 }, { width: 390, height: 844 }]) {
+    const frameHeight = Math.min(viewport.width, viewport.height * ABOUT_PATTERN_ASPECT_RATIO) / ABOUT_PATTERN_ASPECT_RATIO;
+    const offsetY = viewport.height - frameHeight;
+    const rendered = getCustomPathPointsInViewport(line, viewport);
+
+    assert.ok(Math.abs(rendered[1].y - 1) < 1e-10);
+    assert.ok(Math.abs(rendered[0].y - (offsetY + points[0].y * frameHeight) / viewport.height) < 1e-10);
+    const restoredPoint = customPathPointFromViewport(line, viewport, rendered[0]);
+    assert.ok(Math.abs(restoredPoint.x - points[0].x) < 1e-10);
+    assert.ok(Math.abs(restoredPoint.y - points[0].y) < 1e-10);
+  }
+
+  const scene = structuredClone(DEFAULT_SCENE);
+  scene.lines = [line];
+  assert.equal(sanitizeSceneConfig(scene).lines[0].customPath.aspectRatioAlignY, "bottom");
+});
+
+test("saved About scenes migrate to the shared artboard without changing authored points", () => {
+  const scene = structuredClone(DEFAULT_SCENE);
+  const firstPoint = { ...scene.lines[0].customPath.points[0] };
+  const normalized = normalizePortfolioPageScene("/about", scene);
+
+  assert.notStrictEqual(normalized, scene);
+  assert.ok(normalized.lines.every((line) => line.customPath.aspectRatio === ABOUT_PATTERN_ASPECT_RATIO));
+  assert.ok(normalized.lines.every((line) => line.customPath.aspectRatioMode === "artboard"));
+  assert.ok(normalized.lines.every((line) =>
+    line.customPath.aspectRatioAlignY === (ABOUT_BOTTOM_ALIGNED_LINE_IDS.has(line.id) ? "bottom" : undefined),
+  ));
+  assert.deepEqual(normalized.lines[0].customPath.points[0], firstPoint);
+  assert.strictEqual(normalizePortfolioPageScene("/", scene), scene);
+});
+
+test("the homepage default is editable and isolated from About and Opening scenes", () => {
+  const home = getPortfolioDefaultScene("/");
+  const about = getPortfolioDefaultScene("/about");
+  const opening = getPortfolioDefaultScene("/opening");
+
+  assert.equal(home.lines.length, 1);
+  assert.deepEqual(home.lines.map((line) => line.id), ["home-grid"]);
+  assert.ok(home.lines.every((line) => line.motion.amplitude > 0 && line.shape.bendable));
+  assert.equal(home.global.environment.enabled, true);
+  assert.equal(home.global.environment.lightEnabled, true);
+  assert.equal(home.global.environment.airflowEnabled, false);
+  assert.equal(home.global.environment.lights.length, 2);
+  assert.deepEqual(home.lines.filter((line) => line.environmentEnabled).map((line) => line.id), []);
+  assert.ok(about.lines.every((line) => line.id.startsWith("about-")));
+  assert.ok(opening.lines.every((line) => line.id.startsWith("opening-luminous-silk-filaments-")));
+  assert.equal(opening.global.environment.airflowEnabled, true);
+});
+
+test("page defaults keep Home and Work aligned and leave special pages clear", () => {
+  const home = getPortfolioDefaultScene("/");
+  const empty = getPortfolioDefaultScene("/not-found");
+
+  assert.deepEqual(getPortfolioDefaultScene("/work/em-collection"), home);
+  assert.deepEqual(getPortfolioDefaultScene("/work/codynn"), home);
+  assert.equal(getPortfolioDefaultScene("/opening").lines[0].id.startsWith("opening-luminous-silk-filaments-"), true);
+  assert.equal(empty.lines.length, 0);
+  assert.equal(getPortfolioDefaultScene("/404").lines.length, 0);
+  assert.equal(getPortfolioDefaultScene("/under-construction").lines.length, 0);
+  assert.equal(sanitizeSceneConfig({ ...structuredClone(DEFAULT_SCENE), lines: [] }).lines.length, 0);
+  assert.equal(sanitizeSceneConfig({}).lines.length, DEFAULT_SCENE.lines.length);
+
+  const savedWorkStarter = sanitizeSceneConfig(DEFAULT_STARTER_SCENE);
+  assert.strictEqual(
+    normalizePortfolioPageScene("/work/em-collection", savedWorkStarter, home),
+    home,
+  );
+  const savedStarter = sanitizeSceneConfig(DEFAULT_STARTER_SCENE);
+  assert.strictEqual(normalizePortfolioPageScene("/not-found", savedStarter, empty), empty);
+  const customizedStarter = structuredClone(savedStarter);
+  customizedStarter.lines[0].appearance.opacity += 0.1;
+  assert.strictEqual(
+    normalizePortfolioPageScene("/not-found", customizedStarter, empty),
+    customizedStarter,
+  );
+});
+
+test("the homepage uses the saved Opening scene only while its intro is active", () => {
+  const Module = require("node:module");
+  const backgroundModule = require("../lib/magnetic-lines/MagneticBackgroundLines.tsx");
+  const pickerModule = require("../lib/magnetic-lines/MagneticTargetPicker.tsx");
+  const componentPath = require.resolve("../lib/magnetic-lines/PersistentMagneticBackground.tsx");
+  const originalComponentModule = require.cache[componentPath];
+  const originalModuleLoad = Module._load;
+  const originalBackground = backgroundModule.MagneticBackgroundLines;
+  const originalPicker = pickerModule.MagneticTargetPicker;
+  const originalGlobalReact = global.React;
+  const scene = getPortfolioDefaultScene("/");
+  const openingScene = getPortfolioDefaultScene("/opening");
+  let testPath = "/";
+
+  try {
+    assert.strictEqual(getActivePortfolioBackgroundScene("/", true, scene, openingScene), openingScene);
+    assert.strictEqual(getActivePortfolioBackgroundScene("/", false, scene, openingScene), scene);
+    assert.strictEqual(getActivePortfolioBackgroundScene("/opening", true, scene, openingScene), scene);
+    assert.strictEqual(getActivePortfolioBackgroundScene("/", true, scene, openingScene, true), scene);
+
+    global.React = React;
+    backgroundModule.MagneticBackgroundLines = ({ config, openingAnimation }) => React.createElement("div", {
+      "data-scene-line-ids": config.lines.map((line) => line.id).join(","),
+      "data-opening-animation": String(openingAnimation),
+    });
+    pickerModule.MagneticTargetPicker = () => null;
+    replaceProjectPageScenes({ "/": scene, "/opening": openingScene });
+    Module._load = function (request, parent, isMain) {
+      const loaded = originalModuleLoad.call(this, request, parent, isMain);
+      return request === "next/navigation" ? { ...loaded, usePathname: () => testPath } : loaded;
+    };
+
+    delete require.cache[componentPath];
+    const { PersistentMagneticBackground: TestBackground } = require(componentPath);
+    const homepageMarkup = renderToStaticMarkup(React.createElement(TestBackground));
+    assert.match(homepageMarkup, /data-scene-line-ids="home-grid"/);
+    assert.match(homepageMarkup, /data-opening-animation="false"/);
+
+    testPath = "/opening";
+    const openingMarkup = renderToStaticMarkup(React.createElement(TestBackground));
+    assert.match(openingMarkup, /data-scene-line-ids="opening-luminous-silk-filaments-/);
+    assert.match(openingMarkup, /data-opening-animation="true"/);
+  } finally {
+    Module._load = originalModuleLoad;
+    backgroundModule.MagneticBackgroundLines = originalBackground;
+    pickerModule.MagneticTargetPicker = originalPicker;
+    if (originalGlobalReact === undefined) delete global.React;
+    else global.React = originalGlobalReact;
+    delete require.cache[componentPath];
+    require.cache[componentPath] = originalComponentModule;
+    replaceProjectPageScenes({});
+  }
+});
+
+test("the fallback homepage keeps only an animated silk grid with green energy flow", () => {
+  const home = getPortfolioDefaultScene("/");
+  const grid = home.lines.find((line) => line.id === "home-grid");
+  assert.equal(home.lines.length, 1);
+  assert.ok(grid);
+  assert.equal(grid.cursorGlow.enabled, false);
+  assert.equal(grid.glow.enabled, false);
+  assert.equal(grid.outerGlow.enabled, false);
+  assert.equal(grid.cursorInfluence.enabled, true);
+  assert.equal(grid.cursorInfluence.mode, "attract");
+  assert.equal(grid.shape.bendable, true);
+  assert.equal(grid.motion.type, "floating");
+  assert.equal(grid.motion.speed, 0.08);
+  assert.equal(grid.motion.amplitude, 0.05);
+  assert.equal(grid.motion.frequency, 0.8);
+  assert.equal(grid.texture.enabled, true);
+  assert.equal(grid.texture.type, "silk");
+  assert.equal(grid.texture.silkStrands, 3);
+  assert.equal(grid.inherit.texture, false);
+  assert.equal(grid.flow.enabled, true);
+  assert.equal(grid.flow.effectType, "energy-pulse");
+  assert.equal(grid.flow.speed, 0.12);
+  assert.deepEqual(grid.flow.colors, ["#7AD321", "#A6E96B"]);
+});
+
+test("project page scenes are populated from the project-scene API cache", () => {
+  const home = projectScenes["/"];
+  assert.equal(home.lines.length, 1);
+  assert.equal(home.lines[0].id, "home-grid");
+  assert.equal(home.lines[0].cursorInfluence.enabled, true);
+  assert.equal(home.lines[0].cursorInfluence.mode, "attract");
+  assert.equal(home.lines[0].cursorGlow.enabled, false);
+  assert.equal(home.lines[0].glow.enabled, false);
+  assert.equal(home.lines[0].outerGlow.enabled, false);
+  assert.equal(home.lines[0].motion.speed, 0.08);
+  assert.equal(home.lines[0].motion.amplitude, 0.05);
+  assert.equal(home.lines[0].motion.frequency, 0.8);
+  assert.equal(home.lines[0].texture.type, "silk");
+  assert.equal(home.lines[0].texture.silkStrands, 3);
+  assert.equal(home.lines[0].inherit.cursorInfluence, false);
+  assert.equal(home.lines[0].inherit.texture, false);
+  assert.equal(home.lines[0].flow.effectType, "energy-pulse");
+  assert.equal(home.lines[0].flow.speed, 0.12);
+  replaceProjectPageScenes({ "/": home });
+  const cachedHome = getProjectPageScene("/");
+  assert.ok(cachedHome);
+  assert.equal(
+    cachedHome.lines.find((line) => line.id === "home-grid").glow.radius,
+    home.lines.find((line) => line.id === "home-grid").glow.radius,
+  );
+  replaceProjectPageScenes({});
+  assert.equal(getProjectPageScene("/"), null);
+});
+
+test("built-in special pages are available in the Magnetic Lines editor", () => {
+  const paths = listMagneticPagePaths();
+  assert.ok(paths.includes("/not-found"));
+  assert.ok(paths.includes("/under-construction"));
+});
+
+test("disabling a line's inner glow clears its active glow immediately", () => {
+  const scene = structuredClone(DEFAULT_SCENE);
+  const line = structuredClone(scene.lines[0]);
+  line.inherit.glow = false;
+  line.glow = { ...line.glow, enabled: false };
+  scene.lines = [line];
+  const state = createLineRuntimeState();
+  state.glowIntensity.fill(0.8);
+
+  const result = computeLine(
+    resolveLineConfig(line, scene.global),
+    scene,
+    state,
+    0,
+    1 / 60,
+    { width: 1000, height: 800 },
+    null,
+    0,
+  );
+
+  assert.equal(result.maxGlow, 0);
+  assert.ok(result.glowStops.every((intensity) => intensity === 0));
+});
+
+test("homepage hover glow spreads outer glow between separate grid strokes", () => {
+  const home = projectScenes["/"];
+  const grid = home.lines.find((line) => line.id === "home-grid");
+  assert.ok(grid);
+  const activeGrid = {
+    ...grid,
+    glow: { ...grid.glow, enabled: true, radius: 0.03 },
+    outerGlow: { ...grid.outerGlow, enabled: true },
+    cursorGlow: { ...grid.cursorGlow, enabled: true },
+  };
+
+  const result = computeLine(
+    activeGrid,
+    home,
+    createLineRuntimeState(),
+    0,
+    1 / 60,
+    { width: 1000, height: 800 },
+    { x: 102, y: 400, active: true },
+    0,
+  );
+  const outerTargets = computeNeighborGlowTargets([{
+    id: activeGrid.id,
+    points: result.points,
+    segmentLengths: result.segmentLengths,
+    config: activeGrid.outerGlow,
+  }], 800, new Map([[activeGrid.id, result.glowStops]]));
+
+  assert.ok(result.maxGlow > 0, "hovering near a grid stroke activates the inner glow");
+  assert.ok(result.glowStops.some((intensity) => intensity === 0), "inner glow remains localized near the pointer");
+  assert.ok(
+    outerTargets.get(activeGrid.id).some((intensity, index) => intensity > 0 && result.glowStops[index] === 0),
+    "a separate nearby grid stroke receives outer glow",
+  );
+});
+
+test("inner hover glow remains active when outer glow is disabled", () => {
+  const home = projectScenes["/"];
+  const grid = home.lines.find((line) => line.id === "home-grid");
+  assert.ok(grid);
+  const innerGlowOnly = {
+    ...grid,
+    glow: { ...grid.glow, enabled: true, radius: 0.03 },
+    cursorGlow: { ...grid.cursorGlow, enabled: true },
+    outerGlow: { ...grid.outerGlow, enabled: false },
+  };
+
+  const result = computeLine(
+    innerGlowOnly,
+    home,
+    createLineRuntimeState(),
+    0,
+    1 / 60,
+    { width: 1000, height: 800 },
+    { x: 102, y: 400, active: true },
+    0,
+  );
+
+  assert.ok(result.maxGlow > 0, "inner glow remains pointer-driven without outer glow");
+  assert.ok(result.outerGlowStops.every((intensity) => intensity === 0));
+});
+
+test("paused previews keep frames alive for interactions and opted-in visual effects", () => {
+  const state = createLineRuntimeState();
+  assert.equal(hasActiveInteractionFrame(false, [state]), false);
+  assert.equal(hasActiveInteractionFrame(true, [state]), true);
+  assert.equal(shouldScheduleAnimationFrame(false, false, false, false, [state]), true);
+  assert.equal(shouldScheduleAnimationFrame(true, false, true, false, [state]), false);
+  assert.equal(shouldScheduleAnimationFrame(true, true, true, false, [state]), true);
+  assert.equal(shouldScheduleAnimationFrame(true, true, false, false, [state]), false);
+
+  state.glowIntensity[0] = 0.5;
+  assert.equal(hasActiveInteractionFrame(false, [state]), true);
+  state.glowIntensity[0] = 0;
+  state.cursorOffset[0] = { x: 1, y: 0 };
+  assert.equal(hasActiveInteractionFrame(false, [state]), true);
+  state.cursorOffset[0] = { x: 0, y: 0 };
+  assert.equal(hasActiveInteractionFrame(false, [state]), false);
+});
+
+test("page scenes are persisted to and removed from the project file", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "magnetic-page-scenes-"));
+  const filePath = join(directory, "scenes.json");
+  const scene = getPortfolioDefaultScene("/");
+
+  try {
+    assert.deepEqual(await readProjectPageScenes(filePath), {
+      scenes: {},
+      exists: false,
+      needsLegacyImport: true,
+    });
+    const legacyScene = structuredClone(scene);
+    legacyScene.global.color = "#ff0000";
+    await saveProjectPageScene("/about", scene, filePath);
+    await importLegacyProjectPageScenes({ "/about": legacyScene, "/projects": legacyScene }, filePath);
+    const migrated = await readProjectPageScenes(filePath);
+    assert.equal(migrated.needsLegacyImport, false);
+    assert.deepEqual(migrated.scenes["/about"], sanitizeSceneConfig(scene));
+    assert.deepEqual(migrated.scenes["/projects"], sanitizeSceneConfig(legacyScene));
+
+    await saveProjectPageScene("/", scene, filePath);
+
+    const stored = await readProjectPageScenes(filePath);
+    assert.equal(stored.exists, true);
+    assert.equal(stored.needsLegacyImport, false);
+    assert.deepEqual(stored.scenes["/"], sanitizeSceneConfig(scene));
+
+    await removeProjectPageScene("/", filePath);
+    await removeProjectPageScene("/about", filePath);
+    await removeProjectPageScene("/projects", filePath);
+    assert.deepEqual((await readProjectPageScenes(filePath)).scenes, {});
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("empty page scenes persist and load without restoring starter lines", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "magnetic-page-scenes-"));
+  const filePath = join(directory, "scenes.json");
+  const scene = { ...getPortfolioDefaultScene("/not-found"), lines: [] };
+
+  try {
+    await importLegacyProjectPageScenes({ "/not-found": scene }, filePath);
+    const stored = await readProjectPageScenes(filePath);
+    assert.equal(stored.scenes["/not-found"].lines.length, 0);
+
+    await saveProjectPageScene("/under-construction", scene, filePath);
+    const saved = await readProjectPageScenes(filePath);
+    assert.equal(saved.scenes["/under-construction"].lines.length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("page scene saves recover when replacing an existing file is denied", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "magnetic-page-scenes-"));
+  const filePath = join(directory, "scenes.json");
+  const scene = getPortfolioDefaultScene("/");
+  const updatedScene = structuredClone(scene);
+  updatedScene.global.color = "#ff0000";
+  const originalRename = fsPromises.rename;
+  let renameWasBlocked = false;
+
+  try {
+    await saveProjectPageScene("/", scene, filePath);
+    fsPromises.rename = async (source, destination) => {
+      if (destination === filePath) {
+        renameWasBlocked = true;
+        const error = new Error("The existing file is locked.");
+        error.code = "EPERM";
+        throw error;
+      }
+      return originalRename(source, destination);
+    };
+
+    await saveProjectPageScene("/", updatedScene, filePath);
+
+    assert.equal(renameWasBlocked, true);
+    assert.deepEqual(
+      (await readProjectPageScenes(filePath)).scenes["/"],
+      sanitizeSceneConfig(updatedScene),
+    );
+  } finally {
+    fsPromises.rename = originalRename;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("overlapping page-scene saves persist the newest edit", async () => {
+  const previousWindow = global.window;
+  const previousFetch = global.fetch;
+  const storage = new Map();
+  global.window = {
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, String(value)),
+    },
+    dispatchEvent() {},
+  };
+
+  let releaseFirstRequest;
+  const firstRequestGate = new Promise((resolve) => {
+    releaseFirstRequest = resolve;
+  });
+  const requestedColors = [];
+  global.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requestedColors.push(body.scene.global.color);
+    if (requestedColors.length === 1) await firstRequestGate;
+    return { ok: true };
+  };
+
+  try {
+    const firstScene = structuredClone(DEFAULT_SCENE);
+    firstScene.global.color = "#ff0000";
+    const latestScene = structuredClone(DEFAULT_SCENE);
+    latestScene.global.color = "#0000ff";
+
+    const firstSave = savePersistedPageScene("/", firstScene);
+    const latestSave = savePersistedPageScene("/", latestScene);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(requestedColors, ["#ff0000"]);
+
+    releaseFirstRequest();
+    assert.deepEqual(await Promise.all([firstSave, latestSave]), [true, true]);
+    assert.deepEqual(requestedColors, ["#ff0000", "#0000ff"]);
+    assert.equal(
+      JSON.parse(storage.get(PAGE_SCENES_STORAGE_KEY))["/"].global.color,
+      "#0000ff",
+    );
+  } finally {
+    releaseFirstRequest();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousFetch === undefined) delete global.fetch;
+    else global.fetch = previousFetch;
+  }
+});
+
+test("homepage migration replaces only copied About or Opening art", () => {
+  const home = getPortfolioDefaultScene("/");
+  const about = getPortfolioDefaultScene("/about");
+  const copiedAboutSubset = structuredClone(about);
+  copiedAboutSubset.lines = copiedAboutSubset.lines.slice(0, 8);
+  const copiedOpening = structuredClone(DEFAULT_SCENE);
+  copiedOpening.lines = copiedOpening.lines.slice(0, 6).map((line, index) => ({
+    ...line,
+    id: `opening-organic-lime-filaments-line-${String(index + 1).padStart(2, "0")}`,
+  }));
+  const customHome = structuredClone(home);
+  customHome.lines[0].appearance.width += 0.1;
+
+  assert.strictEqual(normalizePortfolioPageScene("/", about, home), home);
+  assert.strictEqual(normalizePortfolioPageScene("/", copiedAboutSubset, home), home);
+  assert.strictEqual(normalizePortfolioPageScene("/", copiedOpening, home), home);
+  assert.strictEqual(normalizePortfolioPageScene("/about", about, about), about);
+  assert.strictEqual(normalizePortfolioPageScene("/opening", copiedOpening, home), copiedOpening);
+  assert.strictEqual(normalizePortfolioPageScene("/", customHome, home), customHome);
+});
+
+test("saved default About scenes gain subtle arc flows without overwriting custom flow settings", () => {
+  const oldFlowLine = structuredClone(DEFAULT_SCENE.lines[0]);
+  oldFlowLine.id = "about-arc-top-inner";
+  oldFlowLine.appearance = { ...oldFlowLine.appearance, color: "#A5B49B" };
+  oldFlowLine.inherit = { ...oldFlowLine.inherit, flow: false };
+  oldFlowLine.flow = {
+    ...oldFlowLine.flow,
+    enabled: false,
+    effectType: "electric-current",
+    pulseRhythm: "continuous",
+    preset: null,
+    speed: 0.22,
+    colorSpeed: 0.08,
+    direction: "forward",
+    intensity: 0.3,
+    width: 1.3,
+    coreWidth: 0.7,
+    glowWidth: 0,
+    opacity: 0.55,
+    colors: ["#8baa68", "#B69A5C"],
+    coreColor: "#fff8e9",
+    glowColor: "#8baa68",
+    streamCount: 1,
+    phase: 0,
+    placement: "along",
+    layers: { current: true, core: true, secondary: false, glow: false, branches: false, sparks: false },
+    branchFrequency: 0.65,
+    branchLength: 0.08,
+    sparkDensity: 0.6,
+    flicker: 0.35,
+    turbulence: 0.35,
+    strandCount: 1,
+    pulseWidth: 0.12,
+    tailLength: 0.18,
+  };
+  const currentDefaultLine = structuredClone(oldFlowLine);
+  currentDefaultLine.flow = {
+    ...oldFlowLine.flow,
+    enabled: true,
+    effectType: "continuous-light",
+    speed: 0.12,
+    colorSpeed: 0.025,
+    intensity: 0.4,
+    width: 1.1,
+    coreWidth: 0.6,
+    glowWidth: 2.5,
+    opacity: 0.52,
+    colors: ["#A5B49B", "#A4D66A"],
+    coreColor: "#D6E6BC",
+    glowColor: "#A4D66A",
+    phase: 0.18,
+    tailLength: 0.14,
+    layers: { current: true, core: true, secondary: false, glow: true, branches: false, sparks: false },
+  };
+  const scene = { ...structuredClone(DEFAULT_SCENE), lines: [oldFlowLine] };
+  const currentDefault = { ...structuredClone(DEFAULT_SCENE), lines: [currentDefaultLine] };
+
+  const normalized = normalizePortfolioPageScene("/about", scene, currentDefault);
+
+  assert.ok(ABOUT_FLOW_LINE_IDS.has(normalized.lines[0].id));
+  assert.equal(normalized.lines[0].flow.enabled, true);
+  assert.equal(normalized.lines[0].flow.effectType, "continuous-light");
+  assert.equal(normalized.lines[0].flow.speed, 0.12);
+  assert.equal(normalized.lines[0].flow.layers.glow, true);
+
+  const previousFlowLine = structuredClone(currentDefaultLine);
+  previousFlowLine.flow = {
+    ...currentDefaultLine.flow,
+    intensity: 0.34,
+    glowWidth: 0,
+    opacity: 0.48,
+    glowColor: "#A5B49B",
+    phase: 0.17999999999999994,
+    layers: { ...currentDefaultLine.flow.layers, glow: false },
+  };
+  const previous = normalizePortfolioPageScene(
+    "/about",
+    { ...scene, lines: [previousFlowLine] },
+    currentDefault,
+  );
+  assert.equal(previous.lines[0].flow.layers.glow, true);
+  assert.equal(previous.lines[0].flow.glowWidth, 2.5);
+
+  const customizedLine = structuredClone(oldFlowLine);
+  customizedLine.flow.speed = 0.4;
+  const customized = normalizePortfolioPageScene(
+    "/about",
+    { ...scene, lines: [customizedLine] },
+    currentDefault,
+  );
+  assert.equal(customized.lines[0].flow.enabled, false);
+  assert.equal(customized.lines[0].flow.speed, 0.4);
+});
+
+test("saved About artwork gets the updated appearance without overwriting editor adjustments", () => {
+  const legacyLine = structuredClone(DEFAULT_SCENE.lines[0]);
+  legacyLine.id = "about-arc-top-outer";
+  legacyLine.appearance = { ...legacyLine.appearance, color: "#8baa68", opacity: 0.3, width: 1 };
+  const intermediateLine = structuredClone(legacyLine);
+  intermediateLine.id = "about-arc-bottom-outer";
+  intermediateLine.appearance = { ...intermediateLine.appearance, color: "#A5B49B", opacity: 0.56, width: 0.95 };
+  const customizedLine = structuredClone(legacyLine);
+  customizedLine.id = "about-arc-top-inner";
+  customizedLine.appearance = { ...customizedLine.appearance, color: "#123456", opacity: 0.41 };
+  const scene = { ...structuredClone(DEFAULT_SCENE), lines: [legacyLine, intermediateLine, customizedLine] };
+
+  const normalized = normalizePortfolioPageScene("/about", scene);
+
+  assert.equal(normalized.lines[0].appearance.color, "#A5B49B");
+  assert.equal(normalized.lines[0].appearance.opacity, 0.6);
+  assert.equal(normalized.lines[1].appearance.color, "#A5B49B");
+  assert.equal(normalized.lines[1].appearance.opacity, 0.32);
+  assert.equal(normalized.lines[2].appearance.color, "#123456");
+  assert.equal(normalized.lines[2].appearance.opacity, 0.41);
+  assert.strictEqual(normalizePortfolioPageScene("/about", normalized), normalized);
+});
+
+test("saved default About arcs migrate to measured editable reference points", () => {
+  const line = structuredClone(DEFAULT_SCENE.lines[0]);
+  line.id = "about-arc-top-outer";
+  line.customPath.points = [
+    { id: "p1", x: 0, y: 0.32 },
+    { id: "p2", x: 0.045, y: 0.313 },
+    { id: "p3", x: 0.09, y: 0.297 },
+    { id: "p4", x: 0.135, y: 0.27 },
+    { id: "p5", x: 0.17, y: 0.23 },
+    { id: "p6", x: 0.195, y: 0.18 },
+    { id: "p7", x: 0.21, y: 0.12 },
+    { id: "p8", x: 0.218, y: 0.055 },
+    { id: "p9", x: 0.218, y: 0 },
+  ];
+  const scene = { ...structuredClone(DEFAULT_SCENE), lines: [line] };
+
+  const normalized = normalizePortfolioPageScene("/about", scene);
+
+  assert.deepEqual(
+    normalized.lines[0].customPath.points.map(({ x, y }) => ({ x, y })),
+    ABOUT_REFERENCE_ARC_POINTS["about-arc-top-outer"],
+  );
+  assert.notDeepEqual(normalized.lines[0].customPath.points, line.customPath.points);
+  assert.strictEqual(normalizePortfolioPageScene("/about", normalized), normalized);
+});
+
+test("saved default About grid moves into the bottom half without overwriting edits", () => {
+  const line = structuredClone(DEFAULT_SCENE.lines[0]);
+  line.id = "about-grid";
+  line.customPath.aspectRatio = ABOUT_PATTERN_ASPECT_RATIO;
+  line.customPath.aspectRatioMode = "artboard";
+  line.customPath.points = [
+    { id: "p1", x: 0.073, y: 0 },
+    { id: "p2", x: 0.073, y: 1 },
+    { id: "p3", x: 0.151, y: 0, moveTo: true },
+    { id: "p4", x: 0.151, y: 1 },
+    { id: "p5", x: 0.323, y: 0, moveTo: true },
+    { id: "p6", x: 0.323, y: 1 },
+    { id: "p7", x: 0.643, y: 0, moveTo: true },
+    { id: "p8", x: 0.643, y: 1 },
+    { id: "p9", x: 0.848, y: 0, moveTo: true },
+    { id: "p10", x: 0.848, y: 1 },
+    { id: "p11", x: 0, y: 0.214, moveTo: true },
+    { id: "p12", x: 1, y: 0.214 },
+    { id: "p13", x: 0, y: 0.725, moveTo: true },
+    { id: "p14", x: 1, y: 0.725 },
+  ];
+  const scene = { ...structuredClone(DEFAULT_SCENE), lines: [line] };
+
+  const normalized = normalizePortfolioPageScene("/about", scene);
+  const migratedPoints = normalized.lines[0].customPath.points;
+
+  assert.deepEqual(
+    migratedPoints.map(({ x, y, moveTo }) => ({ x, y, moveTo: Boolean(moveTo) })),
+    ABOUT_REFERENCE_GRID_POINTS.map(({ x, y, moveTo }) => ({ x, y, moveTo: Boolean(moveTo) })),
+  );
+  assert.ok(migratedPoints.every(({ y }) => y >= 0.5));
+  assert.strictEqual(normalizePortfolioPageScene("/about", normalized), normalized);
+
+  const customizedLine = structuredClone(line);
+  customizedLine.customPath.points[0].y = 0.4;
+  const customizedScene = { ...scene, lines: [customizedLine] };
+  const normalizedCustomizedScene = normalizePortfolioPageScene("/about", customizedScene);
+
+  assert.equal(normalizedCustomizedScene.lines[0].customPath.points[0].y, 0.4);
+});
+
+test("saved legacy About defaults migrate while edited legacy scenes remain intact", () => {
+  const legacyDesigns = [
+    { id: "line-01", points: [[0.04, 0.18], [0.15, 0.1], [0.28, 0.13], [0.36, 0.24], [0.34, 0.37]], opacity: 0.46, width: 1.05 },
+    { id: "line-02", points: [[0.66, 0.1], [0.8, 0.06], [0.93, 0.14], [0.96, 0.28], [0.9, 0.37]], opacity: 0.44, width: 1 },
+    { id: "line-03", points: [[0.64, 0.4], [0.76, 0.34], [0.9, 0.38], [0.96, 0.5], [0.94, 0.64]], opacity: 0.42, width: 0.95 },
+    { id: "line-04", points: [[0.03, 0.77], [0.16, 0.71], [0.28, 0.75], [0.35, 0.87]], opacity: 0.36, width: 0.9 },
+  ];
+  const legacyLines = legacyDesigns.map((design, lineIndex) => {
+    const line = structuredClone(DEFAULT_SCENE.lines[lineIndex]);
+    line.id = design.id;
+    line.customPath.points = design.points.map(([x, y], pointIndex) => ({
+      id: `${design.id}-point-${pointIndex + 1}`,
+      x,
+      y,
+    }));
+    line.appearance = {
+      ...line.appearance,
+      color: "#8baa68",
+      opacity: design.opacity,
+      width: design.width,
+    };
+    return line;
+  });
+  const legacyScene = { ...structuredClone(DEFAULT_SCENE), lines: legacyLines };
+  const currentDefault = {
+    ...structuredClone(DEFAULT_SCENE),
+    lines: [{ ...structuredClone(DEFAULT_SCENE.lines[0]), id: "about-arc-top-outer" }],
+  };
+
+  const migrated = normalizePortfolioPageScene("/about", legacyScene, currentDefault);
+
+  assert.deepEqual(migrated.lines.map(({ id }) => id), ["about-arc-top-outer"]);
+  assert.strictEqual(migrated.global, legacyScene.global);
+
+  const editedLegacyScene = structuredClone(legacyScene);
+  editedLegacyScene.lines[0].customPath.points[0].x += 0.01;
+  const preserved = normalizePortfolioPageScene("/about", editedLegacyScene, currentDefault);
+
+  assert.equal(preserved.lines.length, 4);
+  assert.equal(preserved.lines[0].customPath.points[0].x, 0.05);
 });
 
 test("gravity can pin a selected custom-shape vertex", () => {
@@ -1017,6 +1909,36 @@ test("target activation combines hover and focus and supports click toggles", ()
     assert.deepEqual(getActiveTargets().map((target) => target.id), []);
     fire("click");
     assert.deepEqual(getActiveTargets().map((target) => target.id), ["activation-test"]);
+    fire("click");
+    assert.deepEqual(getActiveTargets().map((target) => target.id), []);
+  } finally {
+    unregister();
+  }
+});
+
+test("editor target options can change code-target activations and click behavior", () => {
+  const listeners = new Map();
+  const element = {
+    getBoundingClientRect: () => ({ left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 }),
+    addEventListener(type, listener) {
+      listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+    },
+    removeEventListener() {},
+  };
+  const fire = (type, event = {}) => listeners.get(type)?.forEach((listener) => listener(event));
+  const unregister = registerTarget("configurable-code-target", element, {
+    activations: ["hover", "focus", "touch"],
+  });
+  try {
+    updateTargetOptions("configurable-code-target", {
+      activations: ["click"],
+      clickBehavior: "toggle",
+    });
+
+    fire("pointerenter", { pointerType: "mouse" });
+    assert.deepEqual(getActiveTargets().map((target) => target.id), []);
+    fire("click");
+    assert.deepEqual(getActiveTargets().map((target) => target.id), ["configurable-code-target"]);
     fire("click");
     assert.deepEqual(getActiveTargets().map((target) => target.id), []);
   } finally {

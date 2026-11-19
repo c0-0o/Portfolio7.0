@@ -26,7 +26,20 @@ const {
 } = require("../lib/magnetic-lines/engine/flowEngine.ts");
 const { getMaterialFlowPaths, getMaterialFlowWidthScale, getTextureStrokeLayers, offsetTexturePoints } = require("../lib/magnetic-lines/texture.ts");
 const { FLOW_PRESETS } = require("../lib/magnetic-lines/flowPresets.ts");
-const { sanitizeSceneConfig } = require("../lib/magnetic-lines/editor/validate.ts");
+const { sanitizeSceneConfig } = require("../lib/magnetic-lines/sceneValidation.ts");
+
+test("production magnetic-lines entry points do not depend on the optional editor folder", () => {
+  const libraryEntry = fs.readFileSync(require.resolve("../lib/magnetic-lines/index.ts"), "utf8");
+  assert.doesNotMatch(libraryEntry, /MagneticLinesEditor|from ["']\.\/editor\//);
+
+  for (const file of ["persistence.ts", "sceneTemplates.ts"]) {
+    const source = fs.readFileSync(require.resolve(`../lib/magnetic-lines/${file}`), "utf8");
+    assert.doesNotMatch(source, /from ["']\.\/editor\//, `${file} stays outside the editor folder`);
+  }
+
+  const editorPage = fs.readFileSync(require.resolve("../app/editor/page.tsx"), "utf8");
+  assert.match(editorPage, /from ["']@\/lib\/magnetic-lines\/editor\/MagneticLinesEditor["']/);
+});
 
 test("flow geometry measures distance along independent paths", () => {
   const geometry = createFlowGeometry(
@@ -141,6 +154,32 @@ test("all implemented flow effects produce bounded visible SVG layers", () => {
     assert.ok(layers.some((layer) => layer && layer.pathData.length > 0), `${effectType} renders visible paths`);
     assert.ok(layers.filter(Boolean).every((layer) => layer.width > 0 && layer.opacity > 0 && layer.opacity <= 1));
   }
+});
+
+test("flow placement controls move effects inside, along, around, and outside the line", () => {
+  const points = Array.from({ length: 11 }, (_, index) => ({ x: index * 10, y: 30 }));
+  const geometry = createFlowGeometry(points, [points.length]);
+  const renderPlacement = (placement) => renderFlowEffect(
+    geometry,
+    geometry.pathData,
+    { ...DEFAULT_FLOW, enabled: true, effectType: "electric-current", placement },
+    0.5,
+    2,
+    false,
+    4,
+  )[1];
+  const inside = renderPlacement("inside");
+  const along = renderPlacement("along");
+  const around = renderPlacement("around");
+  const outside = renderPlacement("outside");
+  const mixed = renderPlacement("mixed");
+
+  assert.ok(inside.width < along.width);
+  assert.equal((along.pathData.match(/M /g) ?? []).length, 1);
+  assert.equal((around.pathData.match(/M /g) ?? []).length, 2);
+  assert.equal((outside.pathData.match(/M /g) ?? []).length, 2);
+  assert.equal((mixed.pathData.match(/M /g) ?? []).length, 3);
+  assert.notEqual(around.pathData, outside.pathData);
 });
 
 test("energy pulses repeat as staggered streams while their path geometry moves", () => {

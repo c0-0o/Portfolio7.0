@@ -16,6 +16,7 @@ import {
   loadCursorEffects,
   sanitizeCursorEffects,
   saveCursorEffects,
+  shouldUseDefaultCursor,
   type ClickEffect,
   type CursorClickAnimation,
   type CursorEffectsConfig,
@@ -57,6 +58,7 @@ import {
 } from "./movement";
 import {
   getCursorDefinition,
+  getDefaultWebsiteCursorConfig,
   getCursorDefinitions,
   getCursorRenderer,
   type CursorRendererMotion,
@@ -75,6 +77,7 @@ type Particle = { x: number; y: number; born: number; angle: number; seed: numbe
 type Burst = { x: number; y: number; born: number; effect: ClickEffect; seed: number; game: boolean };
 type TrailPoint = { x: number; y: number; born: number };
 const MAX_ACTIVE_CLICK_BURSTS = 8;
+const DEFAULT_WEBSITE_CURSOR_CONFIG = getDefaultWebsiteCursorConfig();
 
 function addClickBurst(bursts: Burst[], burst: Burst) {
   bursts.push(burst);
@@ -1335,7 +1338,7 @@ export function CursorEffectsOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glassRef = useRef<HTMLDivElement>(null);
   const hoveredTarget = useRef<Element | null>(null);
-  const configRef = useRef<CursorEffectsConfig>(DEFAULT_CURSOR_EFFECTS);
+  const configRef = useRef<CursorEffectsConfig>(DEFAULT_WEBSITE_CURSOR_CONFIG);
   const pointer = useRef({
     x: -100, y: -100, active: false, lastMove: 0, lastX: -100, lastY: -100,
     renderX: -100, renderY: -100,
@@ -1365,16 +1368,24 @@ export function CursorEffectsOverlay() {
       const config = configRef.current;
       const desktop = mediaQuery.current?.matches ?? false;
       const activeCursor = resolveCursorConfig(config, pointer.current.state);
-      root.dataset.customCursor = String(canvasAvailable && desktop && pointer.current.active &&
+      const customCursorEnabled = String(canvasAvailable && desktop && pointer.current.active &&
         activeCursor !== null && activeCursor.cursor !== "spider" && !pointer.current.native);
-      body.dataset.nativeCursorActive = String(pointer.current.native || activeCursor === null || activeCursor.cursor === "spider");
+      const nativeCursorEnabled = String(pointer.current.native || activeCursor === null || activeCursor.cursor === "spider");
+      if (root.dataset.customCursor !== customCursorEnabled) root.dataset.customCursor = customCursorEnabled;
+      if (body.dataset.nativeCursorActive !== nativeCursorEnabled) body.dataset.nativeCursorActive = nativeCursorEnabled;
     };
     const load = () => {
       const wasCursorRuntimeEnabled = cursorRuntimeEnabled;
       try {
-        configRef.current = window.localStorage.getItem(CURSOR_EFFECTS_APPLIED_KEY) === "true"
-          ? loadCursorEffects()
-          : WEBSITE_CURSOR_DISABLED_CONFIG;
+        const applied = window.localStorage.getItem(CURSOR_EFFECTS_APPLIED_KEY);
+        const storedConfig = window.localStorage.getItem(CURSOR_EFFECTS_STORAGE_KEY);
+        if (applied === "true") {
+          configRef.current = storedConfig === null ? DEFAULT_WEBSITE_CURSOR_CONFIG : loadCursorEffects();
+        } else if (shouldUseDefaultCursor(applied, storedConfig)) {
+          configRef.current = DEFAULT_WEBSITE_CURSOR_CONFIG;
+        } else {
+          configRef.current = WEBSITE_CURSOR_DISABLED_CONFIG;
+        }
       } catch {
         configRef.current = WEBSITE_CURSOR_DISABLED_CONFIG;
       }
@@ -1589,13 +1600,6 @@ export function CursorEffectsOverlay() {
       const width = window.innerWidth;
       const height = window.innerHeight;
       drawingContext.clearRect(0, 0, width, height);
-      if (pointer.current.active) {
-        const hovered = document.elementFromPoint(pointer.current.x, pointer.current.y);
-        pointer.current.state = getCursorState(hovered, pointer.current.x, pointer.current.y);
-        const activeCursor = resolveCursorConfig(config, pointer.current.state);
-        pointer.current.native = activeCursor === null || activeCursor.cursor === "spider" || isNativeCursorTarget(hovered);
-        applyMode();
-      }
       const effectsEnabled = query.matches && !reducedMotion.matches;
       if (reducedMotion.matches) {
         particles.current.length = 0;
@@ -1612,7 +1616,7 @@ export function CursorEffectsOverlay() {
       const draftPreview = Boolean(hoveredElement?.closest('.cursor-effects-demo[data-preview-cursor="true"]'));
       if (nativePreview) {
         pointer.current.native = true;
-        body.dataset.nativeCursorActive = "true";
+        if (body.dataset.nativeCursorActive !== "true") body.dataset.nativeCursorActive = "true";
       }
       const activeCursor = resolveCursorConfig(config, pointer.current.state);
       const isCustomCursor = query.matches && activeCursor !== null && pointer.current.active &&
@@ -2475,13 +2479,16 @@ function CursorPresetSwatch({ id }: { id: CursorPresetId }) {
     if (!canvas || !context) return;
     let frame = 0;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const presetConfig = getCursorDefinition(id)?.defaultConfig() ?? { ...DEFAULT_CURSOR_EFFECTS, cursor: id };
+    const swatchConfig = { ...presetConfig, size: 23, glow: 0.1 };
     const draw = (time = performance.now()) => {
       const ratio = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = 36 * ratio;
-      canvas.height = 36 * ratio;
+      const pixelSize = Math.round(36 * ratio);
+      if (canvas.width !== pixelSize) canvas.width = pixelSize;
+      if (canvas.height !== pixelSize) canvas.height = pixelSize;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      const presetConfig = getCursorDefinition(id)?.defaultConfig() ?? { ...DEFAULT_CURSOR_EFFECTS, cursor: id };
-      drawCursor(context, { ...presetConfig, size: 23, glow: 0.1 }, 18, 18, false, time);
+      context.clearRect(0, 0, 36, 36);
+      drawCursor(context, swatchConfig, 18, 18, false, time);
     };
     const animate = (time: number) => {
       draw(time);
@@ -2560,28 +2567,29 @@ function CursorPointerFamilySwatch({ cursor, clicked, label }: { cursor: CursorP
     if (!canvas || !context) return;
     let frame = 0;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const previewConfig = {
+      ...DEFAULT_CURSOR_EFFECTS,
+      cursor,
+      size: 38,
+      color: "#ffffff",
+      borderColor: "#080808",
+      borderWidth: 2.2,
+      pointerAccentColor: "#ADEB66",
+      shadow: 0,
+      glow: 0,
+      hoverGrow: false,
+      idleAnimationEnabled: false,
+      cursorAnimationIntensity: 0,
+    };
     const draw = (time = performance.now()) => {
       const ratio = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = 64 * ratio;
-      canvas.height = 64 * ratio;
+      const pixelSize = Math.round(64 * ratio);
+      if (canvas.width !== pixelSize) canvas.width = pixelSize;
+      if (canvas.height !== pixelSize) canvas.height = pixelSize;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, 64, 64);
       context.save();
       context.translate(32, 32);
-      const previewConfig = {
-        ...DEFAULT_CURSOR_EFFECTS,
-        cursor,
-        size: 38,
-        color: "#ffffff",
-        borderColor: "#080808",
-        borderWidth: 2.2,
-        pointerAccentColor: "#ADEB66",
-        shadow: 0,
-        glow: 0,
-        hoverGrow: false,
-        idleAnimationEnabled: false,
-        cursorAnimationIntensity: 0,
-      };
       const interaction = {
         ...EMPTY_CURSOR_INTERACTION_STATE,
         current: clicked ? "click" as const : "idle" as const,
@@ -2671,10 +2679,10 @@ function CursorImagePicker({ image, onChange }: { image: string; onChange: (imag
 }
 
 export function CursorEffectsSettings() {
-  const [config, setConfig] = useState(DEFAULT_CURSOR_EFFECTS);
+  const [config, setConfigState] = useState(DEFAULT_WEBSITE_CURSOR_CONFIG);
   const [previewSelection, setPreviewSelection] = useState({
-    baseCursor: DEFAULT_CURSOR_EFFECTS.cursor,
-    selectedCursor: DEFAULT_CURSOR_EFFECTS.cursor,
+    baseCursor: DEFAULT_WEBSITE_CURSOR_CONFIG.cursor,
+    selectedCursor: DEFAULT_WEBSITE_CURSOR_CONFIG.cursor,
   });
   const [category, setCategory] = useState<(typeof CURSOR_CATEGORIES)[number]>("Classic");
   const [selectedState, setSelectedState] = useState<CursorStateId>("pointer");
@@ -2688,13 +2696,43 @@ export function CursorEffectsSettings() {
   const [templateNameAction, setTemplateNameAction] = useState<"save" | "rename" | "duplicate" | null>(null);
   const [templateName, setTemplateName] = useState("");
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(["colors"]));
+  const catalogExpanded = expandedSections.has("catalog");
+  const setEditorConfig = useCallback((next: CursorEffectsConfig) => {
+    setConfigState(next);
+    setExpandedSections((current) => {
+      if (current.has("creature") === isCreatureCursor(next.cursor)) return current;
+      const updated = new Set(current);
+      if (isCreatureCursor(next.cursor)) updated.add("creature");
+      else updated.delete("creature");
+      return updated;
+    });
+  }, []);
+
+  const handleSettingsToggle = (event: SyntheticEvent<HTMLDetailsElement>) => {
+    const details = event.currentTarget;
+    const section = details.dataset.settingsSection;
+    const isOpen = details.open;
+    if (section) {
+      setExpandedSections((current) => {
+        if (current.has(section) === isOpen) return current;
+        const next = new Set(current);
+        if (isOpen) next.add(section);
+        else next.delete(section);
+        return next;
+      });
+    }
+    revealExpandedSettings(event);
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setToolbarHost(document.querySelector<HTMLElement>(".ml-cursor-toolbar-actions"));
       try {
-        setConfig(window.localStorage.getItem(CURSOR_EFFECTS_STORAGE_KEY) ? loadCursorEffects() : DEFAULT_CURSOR_EFFECTS);
-        setApplied(window.localStorage.getItem(CURSOR_EFFECTS_APPLIED_KEY) === "true");
+        const storedConfig = window.localStorage.getItem(CURSOR_EFFECTS_STORAGE_KEY);
+        const applied = window.localStorage.getItem(CURSOR_EFFECTS_APPLIED_KEY);
+        setEditorConfig(storedConfig === null ? DEFAULT_WEBSITE_CURSOR_CONFIG : loadCursorEffects());
+        setApplied(applied === "true" || shouldUseDefaultCursor(applied, storedConfig));
         const result = loadCursorLibrary(window.localStorage);
         setLibrary(result.state);
         if (result.migratedLegacy) saveCursorLibrary(window.localStorage, result.state);
@@ -2707,7 +2745,7 @@ export function CursorEffectsSettings() {
       }
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, []);
+  }, [setEditorConfig]);
 
   const persistLibrary = useCallback((next: CursorLibraryState) => {
     if (!libraryWritable) {
@@ -2732,7 +2770,7 @@ export function CursorEffectsSettings() {
 
   const update = (patch: Partial<CursorEffectsConfig>) => {
     const next = sanitizeCursorEffects({ ...config, ...patch });
-    setConfig(next);
+    setConfigState(next);
     setConfigDirty(true);
     setError("");
   };
@@ -2802,14 +2840,14 @@ export function CursorEffectsSettings() {
         try {
           persistLibrary(saveCursorCustomization(currentLibrary, cursor, next));
         } catch (reason) {
-          setConfig(next);
+          setEditorConfig(next);
           setConfigDirty(false);
           setError(reason instanceof Error ? reason.message : "The updated Pointer preset could not be saved.");
           return;
         }
       }
     }
-    setConfig(next);
+    setEditorConfig(next);
     setConfigDirty(false);
     setError("");
   };
@@ -2837,7 +2875,7 @@ export function CursorEffectsSettings() {
   };
   const removeFromWebsite = () => {
     try {
-      window.localStorage.removeItem(CURSOR_EFFECTS_APPLIED_KEY);
+      window.localStorage.setItem(CURSOR_EFFECTS_APPLIED_KEY, "false");
       setApplied(false);
       window.dispatchEvent(new Event(CURSOR_EFFECTS_CHANGE_EVENT));
       setError("");
@@ -2848,8 +2886,8 @@ export function CursorEffectsSettings() {
   const resetToDefaults = () => {
     try {
       window.localStorage.setItem(CURSOR_EFFECTS_STORAGE_KEY, JSON.stringify(NATIVE_CURSOR_EFFECTS));
-      window.localStorage.removeItem(CURSOR_EFFECTS_APPLIED_KEY);
-      setConfig(NATIVE_CURSOR_EFFECTS);
+      window.localStorage.setItem(CURSOR_EFFECTS_APPLIED_KEY, "false");
+      setEditorConfig(NATIVE_CURSOR_EFFECTS);
       setConfigDirty(false);
       setApplied(false);
       window.dispatchEvent(new Event(CURSOR_EFFECTS_CHANGE_EVENT));
@@ -2906,7 +2944,7 @@ export function CursorEffectsSettings() {
     if (!definition || config.cursor === "native") return;
     try {
       persistLibrary(removeCursorCustomization(library, config.cursor));
-      setConfig(sanitizeCursorEffects({
+      setEditorConfig(sanitizeCursorEffects({
         ...definition.defaultConfig(),
         cursorStates: config.cursor === "pointer" ? definition.defaultConfig().cursorStates : config.cursorStates,
       }));
@@ -3003,7 +3041,7 @@ export function CursorEffectsSettings() {
               setTemplateNameAction(null);
               setDeleteConfirmationOpen(false);
               if (selected) {
-                setConfig(sanitizeCursorEffects(selected.configuration));
+                setEditorConfig(sanitizeCursorEffects(selected.configuration));
                 setConfigDirty(false);
               }
             }}>
@@ -3037,9 +3075,9 @@ export function CursorEffectsSettings() {
               </div>
             </div>}
           </div>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="presets" onToggle={handleSettingsToggle}>
         <summary>Cursor presets <span>{getCursorDefinition(config.cursor)?.name ?? "System cursor"}</span></summary>
-        <div className="cursor-effects-group-content">
+        {expandedSections.has("presets") && <div className="cursor-effects-group-content">
           <div className="cursor-effects-spider-preset">
             <button type="button" className="ml-btn" onClick={() => {
               setCategory("Spooky");
@@ -3060,20 +3098,22 @@ export function CursorEffectsSettings() {
               </button>
             ))}
           </div>
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group cursor-effects-catalog-group">
+      <details className="cursor-effects-group cursor-effects-catalog-group" data-settings-section="catalog" onToggle={handleSettingsToggle}>
         <summary>Cursor design previews <span>40 designs</span></summary>
-        <div className="cursor-effects-group-content">
-          <CursorEffectsCatalog
-            previewCursor={previewCursor}
-            onSelect={(id) => setPreviewSelection({ baseCursor: config.cursor, selectedCursor: id })}
-          />
-        </div>
+        {catalogExpanded && (
+          <div className="cursor-effects-group-content">
+            <CursorEffectsCatalog
+              previewCursor={previewCursor}
+              onSelect={(id) => setPreviewSelection({ baseCursor: config.cursor, selectedCursor: id })}
+            />
+          </div>
+        )}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="appearance" onToggle={handleSettingsToggle}>
         <summary>Cursor appearance <span>{config.cursor === "native" ? "System cursor" : `${config.size}px`}</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("appearance") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-control"><span>Default cursor style</span><select className="ml-select" value={config.cursor} onChange={(event) => selectCursor(event.target.value as CursorPresetId)}>
             <option value="native">System cursor</option>
             <option value="custom-image">Custom image</option>
@@ -3103,11 +3143,11 @@ export function CursorEffectsSettings() {
           <RangeControl label="Glow" value={config.glow} min={0} max={1} onChange={(glow) => update({ glow })} />
           <button type="button" className="ml-btn" onClick={restoreSelectedCursorDefaults}>Restore this cursor&apos;s defaults</button>
           </> : <p className="cursor-effects-note">System cursor appearance is controlled by the operating system. Choose a visual preset to edit its appearance.</p>}
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="states" onToggle={handleSettingsToggle}>
         <summary>Cursor states <span>{selectedCursorState.enabled ? "Custom state" : "Native by default"}</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("states") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-control"><span>Edit state</span><select className="ml-select" value={selectedState} onChange={(event) => setSelectedState(event.target.value as CursorStateId)}>
             {CURSOR_STATE_OPTIONS.map(([state, label]) => <option key={state} value={state}>{label}</option>)}
           </select></label>
@@ -3134,11 +3174,11 @@ export function CursorEffectsSettings() {
             </>}
           </>}
           <p className="cursor-effects-note">Uncustomized states keep their native browser cursors. Buttons, links, text fields, grab states, and resize handles can be configured independently.</p>
-        </div>
+        </div>}
       </details>
-      {getCursorDefinition(config.cursor)?.specializedSettings.includes("spider") && <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      {getCursorDefinition(config.cursor)?.specializedSettings.includes("spider") && <details className="cursor-effects-group" data-settings-section="spider" onToggle={handleSettingsToggle}>
         <summary>Spider movement <span>Spider-specific controls</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("spider") && <div className="cursor-effects-group-content cursor-effects-controls">
           <RangeControl label="Follow delay" value={config.spider.followDelayMs} min={0} max={350} step={5} onChange={(followDelayMs) => update({ spider: { ...config.spider, followDelayMs } })} />
           <RangeControl label="Leg movement speed" value={config.spider.gaitSpeed} min={0.25} max={3} onChange={(gaitSpeed) => update({ spider: { ...config.spider, gaitSpeed } })} />
           <RangeControl label="Walking intensity" value={config.spider.walkingIntensity} min={0} max={2} onChange={(walkingIntensity) => update({ spider: { ...config.spider, walkingIntensity } })} />
@@ -3147,11 +3187,11 @@ export function CursorEffectsSettings() {
           <RangeControl label="Body bounce" value={config.spider.bodyBounce} min={0} max={1} onChange={(bodyBounce) => update({ spider: { ...config.spider, bodyBounce } })} />
           <RangeControl label="Pounce duration" value={config.spider.pounceDurationMs} min={200} max={1200} step={10} onChange={(pounceDurationMs) => update({ spider: { ...config.spider, pounceDurationMs } })} />
           <button type="button" className="ml-btn" onClick={() => update({ spider: { ...DEFAULT_CURSOR_EFFECTS.spider } })}>Reset Spider settings</button>
-        </div>
+        </div>}
       </details>}
-      {isCreatureCursor(config.cursor) && <details className="cursor-effects-group" open onToggle={revealExpandedSettings}>
+      {isCreatureCursor(config.cursor) && <details className="cursor-effects-group" open data-settings-section="creature" onToggle={handleSettingsToggle}>
         <summary>{getCursorDefinition(config.cursor)?.name} details <span>Creature-specific controls</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("creature") && <div className="cursor-effects-group-content cursor-effects-controls">
           {(() => {
             const creatureId = config.cursor as CreatureCursorId;
             const settings = config.creatures[creatureId];
@@ -3180,11 +3220,11 @@ export function CursorEffectsSettings() {
               <button type="button" className="ml-btn" onClick={() => updateCreature({ ...DEFAULT_CURSOR_EFFECTS.creatures[creatureId] })}>Reset {getCursorDefinition(creatureId)?.name} settings</button>
             </>;
           })()}
-        </div>
+        </div>}
       </details>}
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="motion" onToggle={handleSettingsToggle}>
         <summary>Motion and timing <span>{config.animationEasing}</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("motion") && <div className="cursor-effects-group-content cursor-effects-controls">
           <RangeControl label="Cursor animation speed" value={config.cursorAnimationSpeed} min={0.25} max={3} step={0.05} onChange={(cursorAnimationSpeed) => update({ cursorAnimationSpeed })} />
           <RangeControl label="Animation intensity" value={config.cursorAnimationIntensity} min={0} max={2} step={0.05} onChange={(cursorAnimationIntensity) => update({ cursorAnimationIntensity })} />
           <RangeControl label="Movement sensitivity" value={config.movementSensitivity} min={0.1} max={3} step={0.05} onChange={(movementSensitivity) => update({ movementSensitivity })} />
@@ -3201,22 +3241,22 @@ export function CursorEffectsSettings() {
           </select></label>
           <RangeControl label="Follow smoothing" value={config.followSmoothing} min={0.05} max={1} onChange={(followSmoothing) => update({ followSmoothing })} />
           <p className="cursor-effects-note">Smoothing affects non-Spider cursors. Reduced-motion mode uses direct pointer following.</p>
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="movement" onToggle={handleSettingsToggle}>
         <summary>Movement trail <span>{MOVEMENT_OPTIONS.find(([value]) => value === config.movement)?.[1]}</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("movement") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-control"><span>Trail effect</span><select className="ml-select" value={config.movement} onChange={(event) => update({ movement: event.target.value as MovementEffect })}>{MOVEMENT_OPTIONS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
           <RangeControl label="Trail length" value={config.trailLength} min={0.1} max={1} onChange={(value) => update({ trailLength: value })} />
           <RangeControl label="Animation speed" value={config.trailSpeed} min={0.25} max={2} onChange={(value) => update({ trailSpeed: value })} />
           <RangeControl label="Particle size" value={config.particleSize} min={1} max={18} step={1} onChange={(value) => update({ particleSize: value })} />
           <RangeControl label="Particle density" value={config.particleDensity} min={0.1} max={1} onChange={(value) => update({ particleDensity: value })} />
           {config.movement === "spider" && <label className="cursor-effect-toggle"><input type="checkbox" checked={config.spiderWeb} onChange={(event) => update({ spiderWeb: event.target.checked })} />Connect spider trail</label>}
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="click" onToggle={handleSettingsToggle}>
         <summary>Click effect <span>{CLICK_OPTIONS.find(([value]) => value === config.click)?.[1]}</span></summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("click") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-control"><span>Effect</span><select className="ml-select" value={config.click} onChange={(event) => update({ click: event.target.value as ClickEffect })}>{CLICK_OPTIONS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
           <label className="cursor-effect-control"><span>Cursor reaction</span><select className="ml-select" value={config.clickAnimation} onChange={(event) => update({ clickAnimation: event.target.value as CursorClickAnimation })}>
             <option value="bounce">Bounce</option><option value="spin">Spin</option><option value="squash">Squash and rebound</option><option value="pulse">Pulse</option><option value="wobble">Wobble</option>
@@ -3225,11 +3265,11 @@ export function CursorEffectsSettings() {
           <RangeControl label="Click reaction duration" value={config.clickDurationMs} min={100} max={1800} step={10} onChange={(clickDurationMs) => update({ clickDurationMs })} />
           <RangeControl label="Click intensity" value={config.clickIntensity} min={0} max={2} step={0.05} onChange={(clickIntensity) => update({ clickIntensity })} />
           <RangeControl label="Click size" value={config.clickSize} min={0.5} max={2} onChange={(value) => update({ clickSize: value })} />
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="hover" onToggle={handleSettingsToggle}>
         <summary>Hover behavior</summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("hover") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-control"><span>Cursor reaction</span><select className="ml-select" value={config.hoverAnimation} onChange={(event) => update({ hoverAnimation: event.target.value as CursorHoverAnimation })}>
             <option value="pulse">Pulse</option><option value="tilt">Tilt</option><option value="squash">Squash</option><option value="glow">Glow</option>
           </select></label>
@@ -3244,11 +3284,11 @@ export function CursorEffectsSettings() {
             ["magneticHover", "Visual magnetic attraction"],
           ] as const).map(([key, label]) => <label className="cursor-effect-toggle" key={key}><input type="checkbox" checked={config[key]} onChange={(event) => update({ [key]: event.target.checked })} />{label}</label>)}
           {config.magneticHover && <RangeControl label="Magnetic hover strength" value={config.magneticStrength} min={0} max={1} onChange={(value) => update({ magneticStrength: value })} />}
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" data-settings-section="interaction" onToggle={handleSettingsToggle}>
         <summary>Interaction effects</summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("interaction") && <div className="cursor-effects-group-content cursor-effects-controls">
           <label className="cursor-effect-toggle"><input type="checkbox" checked={config.glassEffect} onChange={(event) => update({ glassEffect: event.target.checked })} />Glass cursor with background blur</label>
           {config.glassEffect && <>
             <RangeControl label="Glass blur" value={config.glassBlur} min={0} max={24} step={1} onChange={(value) => update({ glassBlur: value })} />
@@ -3261,11 +3301,11 @@ export function CursorEffectsSettings() {
           <label className="cursor-effect-toggle"><input type="checkbox" checked={config.soundClick} onChange={(event) => update({ soundClick: event.target.checked })} />Play a sound when clicking</label>
           {(config.soundHover || config.soundClick) && <RangeControl label="Sound volume" value={config.soundVolume} min={0} max={1} onChange={(value) => update({ soundVolume: value })} />}
           {(config.soundHover || config.soundClick) && <p className="cursor-effects-note">Sounds are synthesized and unlock after your first click.</p>}
-        </div>
+        </div>}
       </details>
-      <details className="cursor-effects-group" open onToggle={revealExpandedSettings}>
+      <details className="cursor-effects-group" open data-settings-section="colors" onToggle={handleSettingsToggle}>
         <summary>Colors</summary>
-        <div className="cursor-effects-group-content cursor-effects-controls">
+        {expandedSections.has("colors") && <div className="cursor-effects-group-content cursor-effects-controls">
           {config.cursor === "pointer"
             ? <p className="cursor-effects-note">Pointer uses the supplied SVGs exactly as designed, including their white fill, black outlines, and #ADEB66 offset.</p>
             : <>
@@ -3277,7 +3317,7 @@ export function CursorEffectsSettings() {
           <label className="cursor-effect-control"><span>Hover color</span><input type="color" value={config.hoverColorValue} onChange={(event) => update({ hoverColorValue: event.target.value })} /></label>
           <label className="cursor-effect-control"><span>Movement effect color</span><input type="color" value={config.effectColor} onChange={(event) => update({ effectColor: event.target.value })} /></label>
           <label className="cursor-effect-control"><span>Click effect color</span><input type="color" value={config.clickEffectColor} onChange={(event) => update({ clickEffectColor: event.target.value })} /></label>
-        </div>
+        </div>}
       </details>
       <p className="cursor-effects-note">Movement and click effects work independently of the selected cursor. Effects pause on touch-only devices and respect reduced-motion preferences.</p>
       {error && <p className="cursor-effects-error" role="alert">{error}</p>}

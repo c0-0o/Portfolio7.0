@@ -13,6 +13,7 @@ import {
 } from "@/lib/magnetic-lines";
 import { getHeartbeatCycles } from "@/lib/magnetic-lines/engine/flowEngine";
 import { getPortfolioDefaultScene, PORTFOLIO_OPENING_SCENE_EVENT } from "@/lib/magnetic-lines/PersistentMagneticBackground";
+import { getProjectPageScene } from "@/lib/magnetic-lines/projectPageScenes";
 import { markPortfolioVisited, shouldShowPortfolioOpening } from "./openingState";
 
 const openingLetters = [
@@ -57,8 +58,11 @@ function updateOpeningMotion(scene: MagneticLinesSceneConfig): MagneticLinesScen
 }
 
 function loadOpeningScene(): MagneticLinesSceneConfig {
-  const savedScene = loadPersistedPageScene("/opening");
+  const savedScene = process.env.NODE_ENV === "production"
+    ? getProjectPageScene("/opening")
+    : loadPersistedPageScene("/opening");
   if (!savedScene) return openingScene;
+  if (process.env.NODE_ENV === "production") return updateOpeningMotion(savedScene);
   try {
     if (localStorage.getItem(OPENING_MOTION_MIGRATION_KEY) === OPENING_MOTION_VERSION) return savedScene;
   } catch (error) {
@@ -69,13 +73,18 @@ function loadOpeningScene(): MagneticLinesSceneConfig {
   const updatedScene = updateOpeningMotion(savedScene);
   try {
     localStorage.setItem(OPENING_MOTION_MIGRATION_KEY, OPENING_MOTION_VERSION);
-    if (updatedScene !== savedScene && !savePersistedPageScene("/opening", updatedScene)) {
-      try {
-        localStorage.removeItem(OPENING_MOTION_MIGRATION_KEY);
-      } catch (error) {
-        console.error("Could not reset the opening animation migration marker.", error);
-      }
-      console.error("Could not save the updated opening animation settings.");
+    if (updatedScene !== savedScene) {
+      void savePersistedPageScene("/opening", updatedScene).then((saved) => {
+        if (saved) return;
+        try {
+          localStorage.removeItem(OPENING_MOTION_MIGRATION_KEY);
+        } catch (error) {
+          console.error("Could not reset the opening animation migration marker.", error);
+        }
+        console.error("Could not save the updated opening animation settings to project files.");
+      }).catch((error: unknown) => {
+        console.error("Could not save the updated opening animation settings to project files.", error);
+      });
     }
   } catch (error) {
     console.error("Could not migrate the saved opening animation settings.", error);

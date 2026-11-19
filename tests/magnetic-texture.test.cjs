@@ -55,6 +55,18 @@ test("texture types use distinct rendering layers", () => {
   assert.equal(getMaterialFlowWidthScale("silk"), 0.3);
 });
 
+test("texture scale changes silk bundle size and rope twist detail", () => {
+  const fineSilk = getTextureStrokeLayers("silk", 0.01, true, 8);
+  const coarseSilk = getTextureStrokeLayers("silk", 0.04, true, 8);
+  const fineRope = getTextureStrokeLayers("rope", 0.01, true);
+  const coarseRope = getTextureStrokeLayers("rope", 0.04, true);
+
+  assert.notEqual(fineSilk[1].offset, coarseSilk[1].offset);
+  assert.notEqual(fineSilk[1].offsetWave, coarseSilk[1].offsetWave);
+  assert.notEqual(fineRope[1].offset, coarseRope[1].offset);
+  assert.notEqual(fineRope[1].offsetWaveFrequency, coarseRope[1].offsetWaveFrequency);
+});
+
 test("flow geometry follows material strands without joining source strokes", () => {
   const points = [
     { x: 0, y: 0 }, { x: 10, y: 2 },

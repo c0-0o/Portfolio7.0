@@ -33,10 +33,10 @@ const inputs = [
 export default function AboutRoute() {
   return (
     <SiteShell activePage="about">
-      <section className="gutter flex flex-col gap-8 pt-8 pb-14 md:gap-11 md:pt-16">
+      <section className="page-entry gutter flex flex-col gap-8 pt-8 pb-14 md:gap-11 md:pt-16">
         <SectionLabel>ABOUT / A LITTLE MORE HUMAN</SectionLabel>
         <div className="flex flex-col gap-12 lg:flex-row lg:items-center lg:gap-15">
-          <div className="flex flex-1 flex-col gap-7">
+          <div className="order-2 flex flex-1 flex-col gap-7 lg:order-1">
             <div className="flex flex-col gap-3.5">
               <MagneticTarget id="about-title" priority={3}>
                 <h1 className="text-[clamp(44px,7vw,99px)] leading-[0.98] tracking-[-0.04em]">
@@ -61,26 +61,72 @@ export default function AboutRoute() {
               <Tag>Rive</Tag>
             </div>
           </div>
-          <div className="relative mx-auto h-100 w-85 shrink-0 text-[14px] tracking-[1px] lg:mx-0 lg:w-92">
-            <div className="absolute top-16.5 left-4 h-73.5 w-69 rotate-[7deg] overflow-hidden rounded-[20px]">
+          <div className="relative order-1 mx-auto aspect-23/25 w-full max-w-92 shrink-0 text-[clamp(11px,3.8vw,14px)] tracking-[clamp(0.7px,0.27vw,1px)] lg:order-2 lg:mx-0">
+            <div className="absolute top-[16.5%] left-[4.35%] h-[73.5%] w-[75%] rotate-[7deg] overflow-hidden rounded-[20px]">
               <Image
                 src={PORTRAIT}
                 alt="Portrait of Dipak"
                 fill
-                sizes="276px"
+                sizes="(min-width: 368px) 276px, 75vw"
                 loading="eager"
                 className="object-cover object-[66%_center]"
               />
             </div>
-            <span className="absolute top-2 left-41 text-[#747c6d]">OVERTHINKER</span>
-            <span className="absolute top-6.5 left-1.5 font-bold text-muted">CALM</span>
-            <span className="absolute top-88.5 left-1.5 font-bold text-muted">CURIOUS</span>
-            <span className="font-display absolute top-9.5 left-72.5 text-[58px] text-lime">✦</span>
+            <svg
+              className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+              viewBox="0 0 368 400"
+              preserveAspectRatio="none"
+              fill="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <marker
+                  id="about-portrait-arrow"
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                  markerUnits="strokeWidth"
+                >
+                  <path d="M0 0L6 3L0 6" fill="none" stroke="#b3bbaa" strokeWidth="1" />
+                </marker>
+              </defs>
+              <path
+                d="M66 33C66 46 68 53 80 60L98 72"
+                stroke="#b3bbaa"
+                strokeWidth="1.4"
+                strokeDasharray="2 4"
+                strokeLinecap="round"
+                markerEnd="url(#about-portrait-arrow)"
+              />
+              <path
+                d="M300 15C320 13 324 18 319 37L300 70"
+                stroke="#b3bbaa"
+                strokeWidth="1.4"
+                strokeDasharray="2 4"
+                strokeLinecap="round"
+                markerEnd="url(#about-portrait-arrow)"
+              />
+              <path
+                d="M10 350C14 344 22 342 30 343"
+                stroke="#b3bbaa"
+                strokeWidth="1.4"
+                strokeDasharray="2 4"
+                strokeLinecap="round"
+                markerEnd="url(#about-portrait-arrow)"
+              />
+            </svg>
+            <span className="absolute top-[2%] left-[44.7%] z-20 text-[#747c6d]">OVERTHINKER</span>
+            <span className="absolute top-[6.5%] left-[1.63%] z-20 font-bold text-muted">CALM</span>
+            <span className="absolute top-[88.5%] left-[1.63%] z-20 font-bold text-muted">CURIOUS</span>
+            <span className="font-display absolute top-[9.5%] left-[78.4%] z-20 text-[clamp(36px,14vw,58px)] text-lime">✦</span>
           </div>
         </div>
       </section>
 
-      <section className="gutter flex flex-col items-center gap-10 bg-paper-2 py-14 md:flex-row md:gap-20 md:py-22">
+      <section className="page-entry page-entry--1 gutter flex flex-col items-center gap-10 bg-paper-2 py-14 md:flex-row md:gap-20 md:py-22">
         <Image
           src={DESK}
           alt="A desk with sketchbooks by a window"
@@ -109,7 +155,7 @@ export default function AboutRoute() {
         </div>
       </section>
 
-      <section className="gutter flex flex-col gap-8 py-14 md:gap-11 md:py-22">
+      <section className="page-entry page-entry--2 gutter flex flex-col gap-8 py-14 md:gap-11 md:py-22">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:gap-20">
           <h2 className="text-[clamp(40px,5vw,64px)] leading-[1.02] md:w-170">
             HOW I SEE DESIGN.
@@ -132,7 +178,7 @@ export default function AboutRoute() {
         </div>
       </section>
 
-      <section className="gutter flex flex-col gap-8 bg-paper-2 py-12 md:flex-row md:gap-16">
+      <section className="page-entry page-entry--3 gutter flex flex-col gap-8 bg-paper-2 py-12 md:flex-row md:gap-16">
         <div className="flex flex-col gap-3 md:w-105">
           <h2 className="text-[clamp(32px,3.2vw,40px)] leading-none">INPUT IS EVERYWHERE.</h2>
           <p className="text-[15px] leading-[1.6] text-muted">

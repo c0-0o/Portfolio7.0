@@ -26,25 +26,31 @@
 
 /* ───────────── contact ───────────── */
 .contact {
+  --pad-y: clamp(48px, calc(36.1px + 3.05vw), 80px);
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "eyebrow eyebrow"
     "copy copy"
-    "email arrow";
+    "email arrow"
+    "cat cat";
   align-items: center;
   row-gap: 24px;
   align-self: stretch;
   width: 100%;
-  padding: clamp(48px, calc(36.1px + 3.05vw), 80px) var(--pad-x);
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--pad-y) var(--pad-x) 0;
   background: var(--lime);
 }
 @media (min-width: 820px) {
   .contact {
+    padding-bottom: var(--pad-y);
     grid-template-areas:
       "eyebrow eyebrow"
-      "copy arrow"
-      "email email";
+      "copy stage"
+      "email stage";
+    grid-template-columns: minmax(0, 1fr) auto;
     column-gap: clamp(32px, 6.9vw, 100px);
     row-gap: 28px;
   }
@@ -139,6 +145,9 @@
   grid-area: arrow;
   justify-self: end;
 }
+.stage {
+  display: contents;
+}
 .arrowBtn {
   display: block;
   width: clamp(48px, calc(22.7px + 6.48vw), 116px);
@@ -167,7 +176,49 @@
 }
 @media (min-width: 820px) {
   .arrowBtn {
-    align-self: end;
+    align-self: center;
+  }
+  .stage {
+    grid-area: stage;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    align-self: stretch;
+    justify-self: end;
+    margin: 0 calc(clamp(8px, 1.2vw, 17px) - var(--pad-x)) calc(-1 * var(--pad-y)) 0;
+  }
+  .arrowWrap {
+    align-self: center;
+    margin-right: 6%;
+  }
+}
+
+.cat {
+  --cat-w: min(82vw, 380px);
+  grid-area: cat;
+  justify-self: end;
+  width: var(--cat-w);
+  margin: 12px calc(10px - var(--pad-x)) calc(var(--cat-w) * -0.112) 0;
+  aspect-ratio: 308 / 208;
+  line-height: 0;
+  pointer-events: none;
+  transform: translateY(112%);
+}
+.cat svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cat [data-k="head"] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+@media (min-width: 820px) {
+  .cat {
+    --cat-w: clamp(190px, calc(37.26vw - 115.5px), 421px);
+    grid-area: auto;
+    margin: 10px 0 calc(var(--cat-w) * -0.112);
   }
 }
 

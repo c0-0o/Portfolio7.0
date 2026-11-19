@@ -12,7 +12,7 @@ import s from "./Navigation.module.css";
 
 /* ───────────── content (edit here) ───────────── */
 const NAV_LINKS = [
-  { label: "Work", href: "/" },
+  { label: "Work", href: "/#work" },
   { label: "About", href: "/about" },
   { label: "Playground", href: "/playground" },
   { label: "Contact", href: "mailto:nexgen.d.pahari@gmail.com" },
@@ -147,21 +147,26 @@ function MobileMenu({
           </motion.div>
 
           <ul className={s.rows}>
-            {NAV_LINKS.map((l) => (
-              <motion.li key={l.href} variants={item}>
-                <Link
-                  href={l.href}
-                  onClick={onClose}
-                  aria-current={l.label === "Work" ? activePage === "home" ? "page" : undefined : isActive(pathname, l.href) ? "page" : undefined}
-                  className={`${s.row} ${l.label === "Work" ? activePage === "home" ? s.rowActive : "" : isActive(pathname, l.href) ? s.rowActive : ""}`}
-                >
-                  <span className={`${s.rowLabel} ${l.label === "Playground" ? s.rowLabelSm : ""}`}>{l.label}</span>
-                  <span className={s.rowArrow} aria-hidden="true">
-                    ↗
-                  </span>
-                </Link>
-              </motion.li>
-            ))}
+            {NAV_LINKS.map((l) => {
+              const active = l.label === "Work"
+                ? activePage === "home" || activePage === "projects"
+                : isActive(pathname, l.href);
+              return (
+                <motion.li key={l.href} variants={item}>
+                  <Link
+                    href={l.href}
+                    onClick={onClose}
+                    aria-current={active ? "page" : undefined}
+                    className={`${s.row} ${active ? s.rowActive : ""}`}
+                  >
+                    <span className={`${s.rowLabel} ${l.label === "Playground" ? s.rowLabelSm : ""}`}>{l.label}</span>
+                    <span className={s.rowArrow} aria-hidden="true">
+                      ↗
+                    </span>
+                  </Link>
+                </motion.li>
+              );
+            })}
           </ul>
         </div>
 
@@ -249,7 +254,9 @@ export const Navigation = ({ activePage }: { activePage: SitePage }): React.Reac
         <div className={s.actions}>
           <div className={s.links}>
             {DESKTOP_LINKS.map((l) => {
-              const active = l.label === "Work" ? activePage === "home" : isActive(pathname, l.href);
+              const active = l.label === "Work"
+                ? activePage === "home" || activePage === "projects"
+                : isActive(pathname, l.href);
               return (
                 <span key={l.href} className={s.linkWrap}>
                   <Link

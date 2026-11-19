@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import PortfolioHeroExperience from "@/components/portfolio/PortfolioHeroExperience";
 import { SiteShell } from "@/components/portfolio/site";
 
 export const metadata: Metadata = {
@@ -9,8 +8,10 @@ export const metadata: Metadata = {
 
 export default function OpeningPage() {
   return (
-    <SiteShell activePage="home">
-      <PortfolioHeroExperience once={false} />
+    <SiteShell activePage="home" showContactSection={false}>
+      <section className="min-h-screen" aria-label="Opening scene preview">
+        <h1 className="sr-only">Opening scene preview</h1>
+      </section>
     </SiteShell>
   );
 }

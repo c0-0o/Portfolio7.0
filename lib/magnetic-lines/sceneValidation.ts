@@ -1,4 +1,5 @@
 ﻿import type {
+  AnchorPoint,
   Point,
   GeneratedShapePreset,
   AppearanceConfig,
@@ -35,10 +36,10 @@
   OcclusionConfig,
   CustomPath,
   PathPoint,
-} from "../types";
-import { normalizeColorWeights } from "../colorWeights";
+} from "./types";
+import { normalizeColorWeights } from "./colorWeights";
 import { GENERATED_SHAPE_PRESETS } from "./shapePresets";
-import { DEFAULT_GLOBAL, DEFAULT_FLOW, DEFAULT_LINE_ENVIRONMENT, DEFAULT_LINE_GRAVITY, DEFAULT_ANCHOR_MOTION, DEFAULT_ANIMATION, DEFAULT_CURSOR, DEFAULT_SHAPE, STARTER_LINES } from "../defaultScene";
+import { DEFAULT_GLOBAL, DEFAULT_FLOW, DEFAULT_LINE_ENVIRONMENT, DEFAULT_LINE_GRAVITY, DEFAULT_ANCHOR_MOTION, DEFAULT_ANIMATION, DEFAULT_CURSOR, DEFAULT_SHAPE, STARTER_LINES } from "./defaultScene";
 
 const num = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 const glowNumber = (v: unknown, fallback: number, isLegacy: boolean): number =>
@@ -81,11 +82,15 @@ function sanitizeCustomPath(v: unknown, from: Point, to: Point): CustomPath {
   });
   const aspectRatio = Number(o.aspectRatio);
   const curveSmoothing = clamp01(o.curveSmoothing, 0);
+  const aspectRatioMode = o.aspectRatioMode === "artboard" ? "artboard" : undefined;
+  const aspectRatioAlignY = o.aspectRatioAlignY === "bottom" ? "bottom" : o.aspectRatioAlignY === "top" ? "top" : undefined;
   return {
     points: points.length >= 2 ? points : [{ id: "path-start", ...from }, { id: "path-end", ...to }],
     curveSmoothing,
     closedJoint: o.closedJoint === "breakable" ? "breakable" : "connected",
     ...(Number.isFinite(aspectRatio) && aspectRatio > 0 ? { aspectRatio } : {}),
+    ...(aspectRatioMode ? { aspectRatioMode } : {}),
+    ...(aspectRatioAlignY ? { aspectRatioAlignY } : {}),
   };
 }
 
@@ -194,7 +199,7 @@ function sanitizeAnchorMotion(v: unknown): AnchorMotionConfig {
   };
 }
 
-function sanitizeAnchorPoint(v: unknown, index: number): import("../types").AnchorPoint {
+function sanitizeAnchorPoint(v: unknown, index: number): AnchorPoint {
   const o = (v ?? {}) as Record<string, unknown>;
   const type = o.type === "custom" || o.type === "circle" || o.type === "ellipse" || o.type === "square" ? o.type : "custom";
   const pathPointId = typeof o.pathPointId === "string" && o.pathPointId.length > 0 ? o.pathPointId : undefined;
@@ -235,7 +240,7 @@ function sanitizeAnchorPoint(v: unknown, index: number): import("../types").Anch
   };
 }
 
-function sanitizeAnchorPoints(v: unknown): import("../types").AnchorPoint[] {
+function sanitizeAnchorPoints(v: unknown): AnchorPoint[] {
   const arr = Array.isArray(v) ? v : [];
   const points = arr.map((item, index) => sanitizeAnchorPoint(item, index));
   const normalizedOrder = new Map<number, number>();
@@ -708,7 +713,7 @@ export function sanitizeSceneConfig(v: unknown): MagneticLinesSceneConfig {
     const c = (o.cursor ?? {}) as Record<string, unknown>;
 
     const sourceVersion = Math.round(num(o.version, 1));
-    const lines = Array.isArray(o.lines) && o.lines.length > 0 ? o.lines.map(sanitizeLine) : STARTER_LINES;
+    const lines = Array.isArray(o.lines) ? o.lines.map(sanitizeLine) : STARTER_LINES;
     if (sourceVersion < 4) {
       const sourceLines = Array.isArray(o.lines) ? o.lines : [];
       lines.forEach((line, index) => {

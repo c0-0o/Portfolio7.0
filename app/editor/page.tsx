@@ -1,6 +1,6 @@
 "use client";
 
-import { MagneticLinesEditor } from "@/lib/magnetic-lines";
+import { MagneticLinesEditor } from "@/lib/magnetic-lines/editor/MagneticLinesEditor";
 
 export default function EditorPage() {
   if (process.env.NODE_ENV === "production") return null;

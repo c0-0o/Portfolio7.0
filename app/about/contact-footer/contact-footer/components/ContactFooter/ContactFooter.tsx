@@ -18,12 +18,12 @@ const EXPLORE = {
 } as const;
 const ELSEWHERE = [
   [
-    { label: "Behance", href: "https://www.behance.net/" },
-    { label: "Dribbble", href: "https://dribbble.com/" },
+    { label: "Behance", href: "https://www.behance.net/paharidipak" },
+    { label: "Dribbble", href: "https://dribbble.com/dipak-pahari" },
   ],
   [
-    { label: "LinkedIn", href: "https://www.linkedin.com/" },
-    { label: "Instagram", href: "https://www.instagram.com/" },
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/iamu/" },
+    { label: "Instagram", href: "https://www.instagram.com/i_am_puredevil/?hl=en" },
   ],
 ] as const;
 

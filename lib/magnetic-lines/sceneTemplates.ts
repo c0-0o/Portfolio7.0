@@ -7,7 +7,7 @@ import type {
   TextureType,
 } from "./types";
 import { DEFAULT_FLOW, DEFAULT_SCENE } from "./defaultScene";
-import { makeBlankLine, sanitizeSceneConfig } from "./editor/validate";
+import { makeBlankLine, sanitizeSceneConfig } from "./sceneValidation";
 import { getHeartbeatCycles } from "./engine/flowEngine";
 
 export const SCENE_TEMPLATE_CATEGORIES = [

@@ -76,6 +76,10 @@ test("registry includes all existing built-ins and their renderer metadata", () 
   assert.equal(pointer.defaultConfig().size, 28);
   assert.equal(pointer.defaultConfig().cursorStates.link.enabled, true);
   assert.equal(pointer.defaultConfig().cursorStates.disabled.enabled, true);
+  assert.equal(registry.getDefaultWebsiteCursorConfig().cursor, "pointer");
+  assert.equal(registry.getDefaultWebsiteCursorConfig().movement, "none");
+  assert.equal(registry.getDefaultWebsiteCursorConfig().click, "none");
+  assert.equal(registry.getDefaultWebsiteCursorConfig().idleAnimationEnabled, false);
   for (const [state, cursor] of Object.entries({
     pointer: "pointer",
     link: "pointer-hand",
@@ -96,6 +100,13 @@ test("registry includes all existing built-ins and their renderer metadata", () 
   for (const cursor of model.POINTER_CURSOR_SHAPE_IDS) {
     assert.equal(config.sanitizeCursorEffects({ ...config.DEFAULT_CURSOR_EFFECTS, cursor }).cursor, cursor);
   }
+});
+
+test("the Classic Pointer is the fresh-visitor default only when no saved choice exists", () => {
+  assert.equal(config.shouldUseDefaultCursor(null, null), true);
+  assert.equal(config.shouldUseDefaultCursor(null, "{}"), false);
+  assert.equal(config.shouldUseDefaultCursor("false", null), false);
+  assert.equal(config.shouldUseDefaultCursor("true", null), false);
 });
 
 test("Pointer preset serves and renders the supplied SVG cursor artwork unchanged", () => {
@@ -170,7 +181,15 @@ test("Text cursor state only activates over visible selectable glyphs", () => {
   assert.match(implementation, /\[popover\]:popover-open, select, input\[type="color"\]/);
   assert.match(implementation, /!pointer\.current\.native && !nativePreview/);
   assert.match(implementation, /getCursorState\(event\.target, event\.clientX, event\.clientY\)/);
-  assert.match(implementation, /getCursorState\(hovered, pointer\.current\.x, pointer\.current\.y\)/);
+  const drawStart = implementation.indexOf("function draw(now: number): boolean {");
+  const drawEnd = implementation.indexOf("drawFrame = draw;", drawStart);
+  assert.notEqual(drawStart, -1, "the website cursor has an animation draw function");
+  assert.notEqual(drawEnd, -1, "the website cursor assigns its draw function to the runtime");
+  assert.doesNotMatch(
+    implementation.slice(drawStart, drawEnd),
+    /getCursorState\(/,
+    "cursor state is not remeasured every animation frame",
+  );
   assert.match(implementation, /getCursorState\(hovered, rect\.left \+ pointer\.x, rect\.top \+ pointer\.y\)/);
 });
 

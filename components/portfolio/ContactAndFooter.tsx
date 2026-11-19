@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useInView, useReducedMotion, type Variants } from "framer-motion";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import { mountCat } from "@/components/portfolio/contact-cat/ContactCatEngine";
 import s from "./ContactAndFooter.module.css";
 
 /* ───────────── content (edit here) ───────────── */
@@ -17,12 +18,12 @@ const EXPLORE = {
 } as const;
 const ELSEWHERE = [
   [
-    { label: "Behance", href: "https://www.behance.net/" },
-    { label: "Dribbble", href: "https://dribbble.com/" },
+    { label: "Behance", href: "https://www.behance.net/paharidipak" },
+    { label: "Dribbble", href: "https://dribbble.com/dipak-pahari" },
   ],
   [
-    { label: "LinkedIn", href: "https://www.linkedin.com/" },
-    { label: "Instagram", href: "https://www.instagram.com/" },
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/iamu/" },
+    { label: "Instagram", href: "https://www.instagram.com/i_am_puredevil/?hl=en" },
   ],
 ] as const;
 
@@ -53,12 +54,37 @@ function Sep() {
   );
 }
 
-function ArrowCircle() {
+function ArrowCircle({ innerRef }: { innerRef: React.Ref<HTMLAnchorElement> }) {
   return (
-    <a className={s.arrowBtn} href={`mailto:${EMAIL}`} aria-label="Send me an email">
+    <a ref={innerRef} className={s.arrowBtn} href={`mailto:${EMAIL}`} aria-label="Send me an email">
       <Image className={s.arrowImage} src="/Contactarrow.svg" alt="" width={116} height={116} />
     </a>
   );
+}
+
+function ContactCat({
+  sectionRef,
+  emailRef,
+  arrowRef,
+}: {
+  sectionRef: React.RefObject<HTMLElement | null>;
+  emailRef: React.RefObject<HTMLAnchorElement | null>;
+  arrowRef: React.RefObject<HTMLAnchorElement | null>;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!host.current || !sectionRef.current) return;
+    const cat = mountCat({
+      section: sectionRef.current,
+      host: host.current,
+      email: emailRef.current,
+      arrow: arrowRef.current,
+    });
+    return cat.destroy;
+  }, [sectionRef, emailRef, arrowRef]);
+
+  return <div ref={host} className={s.cat} aria-hidden="true" />;
 }
 
 function Out({ label, href }: { label: string; href: string }) {
@@ -71,9 +97,15 @@ function Out({ label, href }: { label: string; href: string }) {
 }
 
 /* ───────────── component ───────────── */
-export const ContactAndFooter = (): React.ReactElement => {
+export const ContactAndFooter = ({
+  showContactSection = true,
+}: {
+  showContactSection?: boolean;
+}): React.ReactElement => {
   const contactRef = useRef<HTMLElement>(null);
   const footerRef = useRef<HTMLElement>(null);
+  const emailRef = useRef<HTMLAnchorElement>(null);
+  const arrowRef = useRef<HTMLAnchorElement>(null);
   const contactInView = useInView(contactRef, { once: true, amount: 0.12 });
   const footerInView = useInView(footerRef, { once: true, amount: 0.12 });
   const reduce = useReducedMotion();
@@ -115,40 +147,44 @@ export const ContactAndFooter = (): React.ReactElement => {
 
   return (
     <div className={s.root}>
-      {/* ───────── contact ───────── */}
-      <motion.section
-        ref={contactRef}
-        className={s.contact}
-        aria-labelledby="contact-title"
-        variants={section}
-        initial="hidden"
-        animate={contactInView ? "show" : "hidden"}
-      >
-        <motion.p className={s.eyebrow} variants={eyebrow}>
-          <span className={s.contactDot} aria-hidden="true" />
-          <span className={s.contactEyebrowText}>
-            <Words text="GOOD THINGS START WITH A CONVERSATION" variants={word} />
-          </span>
-        </motion.p>
-
-        <div className={s.copy}>
-          <motion.h2 id="contact-title" className={s.title} variants={title}>
-            <Words text="HAVE A GOOD IDEA?" variants={word} />
-            <br />
-            <Words text="LET'S MAKE IT REAL." variants={word} />
-          </motion.h2>
-          <motion.p className={s.description} variants={contactItem} custom={0.45}>
-            A new product, a website, a tricky flow, or just a hello. I&apos;m all ears.
+      {showContactSection && (
+        <motion.section
+          ref={contactRef}
+          className={s.contact}
+          aria-labelledby="contact-title"
+          variants={section}
+          initial="hidden"
+          animate={contactInView ? "show" : "hidden"}
+        >
+          <motion.p className={s.eyebrow} variants={eyebrow}>
+            <span className={s.contactDot} aria-hidden="true" />
+            <span className={s.contactEyebrowText}>
+              <Words text="GOOD THINGS START WITH A CONVERSATION" variants={word} />
+            </span>
           </motion.p>
-        </div>
 
-        <motion.a className={s.emailLink} href={`mailto:${EMAIL}`} variants={contactItem} custom={0.55}>
-          {EMAIL}
-        </motion.a>
-        <motion.div className={s.arrowWrap} variants={contactItem} custom={0.35}>
-          <ArrowCircle />
-        </motion.div>
-      </motion.section>
+          <div className={s.copy}>
+            <motion.h2 id="contact-title" className={s.title} variants={title}>
+              <Words text="HAVE A GOOD IDEA?" variants={word} />
+              <br />
+              <Words text="LET'S MAKE IT REAL." variants={word} />
+            </motion.h2>
+            <motion.p className={s.description} variants={contactItem} custom={0.45}>
+              A new product, a website, a tricky flow, or just a hello. I&apos;m all ears.
+            </motion.p>
+          </div>
+
+          <motion.a ref={emailRef} className={s.emailLink} href={`mailto:${EMAIL}`} variants={contactItem} custom={0.55}>
+            {EMAIL}
+          </motion.a>
+          <div className={s.stage}>
+            <motion.div className={s.arrowWrap} variants={contactItem} custom={0.35}>
+              <ArrowCircle innerRef={arrowRef} />
+            </motion.div>
+            <ContactCat sectionRef={contactRef} emailRef={emailRef} arrowRef={arrowRef} />
+          </div>
+        </motion.section>
+      )}
 
       {/* ───────── footer ───────── */}
       <motion.footer

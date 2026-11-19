@@ -11,7 +11,7 @@ The main implementation is in [CursorEffects.tsx](./lib/cursor-effects/CursorEff
 ### Default cursor and activation
 
 - `CursorEffectsOverlay` is mounted globally by the root layout. It draws into a fixed, full-viewport Canvas 2D layer; the canvas and glass lens have `pointer-events: none`.
-- The website uses the browser/OS cursor by default. The editor’s initial draft is `modern-arrow`, but it is preview-only until Apply. The overlay reads a separate local-storage applied flag before enabling the website cursor.
+- Fresh visitors use the low-overhead Classic Pointer preset on the website and in the editor. It has no movement trail, click burst, or idle animation by default, so the main canvas can stop after each pointer update. Removing or resetting the cursor records an explicit opt-out and restores the browser/OS cursor. Saved or previously applied configurations continue to use their existing settings.
 - When a custom cursor is active, a root data attribute enables CSS that hides native cursors. State-specific native fallbacks temporarily restore the browser cursor. Selecting System cursor or Reset restores the native cursor.
 - Main website rendering is limited to fine-pointer/hover devices. A reduced-motion media query suppresses trails and click bursts.
 - The overlay tracks pointer state in refs and draws with Canvas 2D; it does not set React state on every pointer movement. The main overlay, preview, and showcase share drawing helpers, but their pointer/event loops are separate.
@@ -176,7 +176,7 @@ There are no identified controls that are purely decorative with no code path at
 - Hover targets are found using `a`, `button`, and `[role=button]`. Hover flags control scale, color, rounded outline, circular outline, cursor-centered magnetic nudge, and arcade reticle. Hover sound is synthesized with Web Audio after audio is unlocked by a click.
 - Click effects share a global click handler and are drawn in the canvas. They do not consume the click or block navigation.
 - Cursor states include pointer, link, text, grab/grabbing, resize, crosshair, help, wait/progress, not-allowed/no-drop, zoom, move, context-menu, copy, and alias. Text entry controls are explicitly identified; other states use CSS cursor values.
-- State overrides are opt-in. By default, recognized links/buttons/text fields and other recognized states keep their native system cursor. The selected base custom cursor is shown on generic pointer regions, not necessarily every control.
+- State overrides are opt-in for most presets, so recognized links/buttons/text fields can keep their native cursor. The Classic Pointer preset explicitly maps these common states to matching cursor shapes.
 - There is no separate text-hover effect, text-selection animation, drag gesture, or selection listener. Native text selection remains the browser’s behavior.
 
 ## 8. Persistence and template system analysis
@@ -223,7 +223,7 @@ Magnetic Lines uses its own persistence and scene/template structures, separate 
 4. **Color control is not universal:** white/black circle fills are hard-coded and do not follow the cursor fill color control. Several line-art shapes interpret fill/border differently.
 5. **No drag/text-selection-specific effects:** only pointer movement, hover targets, and click are handled.
 6. **No independent size dimensions or general animation controls:** width/height, gradients, general offsets, rotation, timing, easing, frequency, and amplitude are absent.
-7. **Native cursor states are the default for recognized controls:** base cursor selection does not automatically override links, buttons, and text inputs; each relevant state must be enabled.
+7. **Native cursor states remain the default for most presets:** base cursor selection does not automatically override links, buttons, and text inputs; the Classic Pointer preset is the exception, with matching state-specific shapes enabled.
 8. **Template list is not schema-validated or versioned:** config is sanitized, but template metadata/list parsing is not equivalently guarded.
 9. **Magnetic cursor glow can be mistaken for cursor influence:** default line cursor glow is on while default cursor influence is off. Target magnetism is another distinct source of line deformation.
 10. **Top-level Magnetic cursor config includes fields unused by runtime:** only its smoothing/release values are consumed in the traced path; actual influence/glow are driven by separate per-line/global configs.

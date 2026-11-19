@@ -12,6 +12,7 @@ export interface InteractionLineGeometry {
 export interface NeighborGlowLineGeometry {
   id: string;
   points: Point[];
+  segmentLengths?: number[];
   config: GlowConfig;
 }
 
@@ -56,21 +57,20 @@ function distanceToSegment(point: Point, from: Point, to: Point): number {
 function nearestOtherLineDistance(
   point: Point,
   sourceId: string,
-  sources: NeighborGlowLineGeometry[],
-  boundsByLine: Map<string, Bounds>,
+  sourceSegmentIndex: number,
+  sources: Array<{ id: string; segmentIndex: number; points: Point[]; bounds: Bounds }>,
   radiusPx: number,
 ): number {
   let nearestDistance = Infinity;
-  for (const line of sources) {
-    if (line.id === sourceId || line.points.length === 0) continue;
-    const bounds = boundsByLine.get(line.id);
-    if (bounds && distanceToBounds(point, bounds) >= radiusPx) continue;
-    if (line.points.length === 1) {
-      nearestDistance = Math.min(nearestDistance, distance(point, line.points[0]));
+  for (const source of sources) {
+    if (source.id === sourceId && source.segmentIndex === sourceSegmentIndex) continue;
+    if (distanceToBounds(point, source.bounds) >= radiusPx) continue;
+    if (source.points.length === 1) {
+      nearestDistance = Math.min(nearestDistance, distance(point, source.points[0]));
       continue;
     }
-    for (let index = 1; index < line.points.length; index++) {
-      nearestDistance = Math.min(nearestDistance, distanceToSegment(point, line.points[index - 1], line.points[index]));
+    for (let index = 1; index < source.points.length; index++) {
+      nearestDistance = Math.min(nearestDistance, distanceToSegment(point, source.points[index - 1], source.points[index]));
     }
   }
   return nearestDistance;
@@ -79,38 +79,53 @@ function nearestOtherLineDistance(
 export function computeNeighborGlowTargets(
   lines: NeighborGlowLineGeometry[],
   minDim: number,
-  activeSourceIds: ReadonlySet<string>,
+  activeGlowStopsById: ReadonlyMap<string, number[]>,
 ): Map<string, number[]> {
   const targets = new Map<string, number[]>();
-  const activeSources = lines.filter((line) => activeSourceIds.has(line.id));
-  const activeSourceBounds = new Map(activeSources.flatMap((line) => {
-    const bounds = boundsFor(line.points);
-    return bounds ? [[line.id, bounds] as const] : [];
-  }));
+  const activeSources = lines.flatMap((line) => {
+    const activeStops = activeGlowStopsById.get(line.id);
+    if (!activeStops) return [];
+    return getLineRanges(line).flatMap((range, segmentIndex) => {
+      if (!activeStops.slice(range.start, range.end).some((intensity) => intensity > 0)) return [];
+      const points = line.points.slice(range.start, range.end);
+      const bounds = boundsFor(points);
+      return bounds ? [{ id: line.id, segmentIndex, points, bounds }] : [];
+    });
+  });
   for (const line of lines) {
     const values = line.points.map(() => 0);
     const { config } = line;
     const radiusPx = config.radius * minDim;
     if (config.enabled && config.intensity > 0 && radiusPx > 0 && activeSources.length > 0) {
-      for (let index = 0; index < line.points.length; index++) {
-        const nearestDistance = nearestOtherLineDistance(line.points[index], line.id, activeSources, activeSourceBounds, radiusPx);
-        values[index] =
-          falloff(nearestDistance, radiusPx, config.falloff / 100) *
-          clamp01(config.intensity / 100) *
-          clamp01(config.opacity / 100);
+      for (const [segmentIndex, range] of getLineRanges(line).entries()) {
+        for (let index = range.start; index < range.end; index++) {
+          const nearestDistance = nearestOtherLineDistance(
+            line.points[index],
+            line.id,
+            segmentIndex,
+            activeSources,
+            radiusPx,
+          );
+          values[index] =
+            falloff(nearestDistance, radiusPx, config.falloff / 100) *
+            clamp01(config.intensity / 100) *
+            clamp01(config.opacity / 100);
+        }
       }
 
-      let peakIndex = 0;
-      for (let index = 1; index < values.length; index++) {
-        if (values[index] > values[peakIndex]) peakIndex = index;
-      }
-      const peak = values[peakIndex] ?? 0;
-      if (peak > 0 && values.length > 1) {
-        const spread = Math.max(1, Math.round((config.length / 100) * values.length));
-        for (let index = 0; index < values.length; index++) {
-          const distanceFromPeak = Math.abs(index - peakIndex);
-          if (distanceFromPeak <= spread) {
-            values[index] = Math.max(values[index], peak * (1 - distanceFromPeak / (spread + 1)));
+      for (const range of getLineRanges(line)) {
+        let peakIndex = range.start;
+        for (let index = range.start + 1; index < range.end; index++) {
+          if (values[index] > values[peakIndex]) peakIndex = index;
+        }
+        const peak = values[peakIndex] ?? 0;
+        if (peak > 0 && range.end - range.start > 1) {
+          const spread = Math.max(1, Math.round((config.length / 100) * (range.end - range.start)));
+          for (let index = range.start; index < range.end; index++) {
+            const distanceFromPeak = Math.abs(index - peakIndex);
+            if (distanceFromPeak <= spread) {
+              values[index] = Math.max(values[index], peak * (1 - distanceFromPeak / (spread + 1)));
+            }
           }
         }
       }
@@ -120,7 +135,7 @@ export function computeNeighborGlowTargets(
   return targets;
 }
 
-function getLineRanges(line: InteractionLineGeometry): Array<{ start: number; end: number }> {
+function getLineRanges(line: { points: Point[]; segmentLengths?: number[] }): Array<{ start: number; end: number }> {
   if (!line.segmentLengths?.length) {
     return line.points.length > 0 ? [{ start: 0, end: line.points.length }] : [];
   }

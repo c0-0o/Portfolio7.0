@@ -37,6 +37,10 @@ export interface CustomPath {
   curveSmoothing?: number;
   /** Source viewport ratio for generated shapes that must retain their proportions. */
   aspectRatio?: number;
+  /** Applies one shared artboard transform to points instead of fitting each path independently. */
+  aspectRatioMode?: "local" | "artboard";
+  /** Aligns an artboard path to the top or bottom when the viewport is taller than the artboard. */
+  aspectRatioAlignY?: "top" | "bottom";
   closedJoint?: "connected" | "breakable";
 }
 
@@ -58,15 +62,15 @@ export interface ShapeConfig {
 export interface MotionConfig {
   enabled?: boolean;
   type: MotionType;
-  /** Cycles-per-second style multiplier. */
+  /** Motion cycles per second. */
   speed: number;
-  /** Normalized amplitude ? fraction of min(viewport.width, viewport.height). */
+  /** Peak motion displacement as a fraction of the viewport's shorter side. */
   amplitude: number;
-  /** Spatial-frequency multiplier used by floating/vibration to vary phase along the line. */
+  /** Spatial cycles along the line for floating/vibration; unused by tension. */
   frequency: number;
   /** Deterministic per-line phase offset, in radians. */
   phase: number;
-  /** 0 = rigid (barely bends for magnets), 1 = highly flexible. */
+  /** 0 = rigid, 1 = full magnetic deformation response. */
   deformability: number;
 }
 

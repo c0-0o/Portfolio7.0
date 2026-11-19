@@ -79,6 +79,7 @@ function buildTextureStrokeLayers(
   silkStrands: number,
 ): TextureStrokeLayer[] {
   const period = texturePeriod(scale);
+  const detailScale = Math.min(5, Math.max(0.25, scale / 0.02));
   if (type === "grain") {
     return [{ id: "grain", width: 1.2, opacity: 0.45, dashOffset: 0, lineCap: "round", filter: "grain" }];
   }
@@ -114,8 +115,8 @@ function buildTextureStrokeLayers(
         opacity: (0.72 + ((index * 7) % 4) * 0.07) * edgeFade,
         dashOffset: 0,
         lineCap: "butt" as const,
-        offset: position * 1.55,
-        offsetWave: 0.45 + waveNoise * 0.45,
+        offset: position * 1.55 * detailScale,
+        offsetWave: (0.45 + waveNoise * 0.45) * detailScale,
         offsetWaveFollowsAirflow: true,
         offsetPhase: phaseNoise * Math.PI * 2,
         motionSpeed: 0.55 + phaseNoise * 0.65,
@@ -133,9 +134,9 @@ function buildTextureStrokeLayers(
           opacity: 0.86,
           dashOffset: 0,
           lineCap: "round" as const,
-          offset: offset * 0.45,
-          offsetWave: 0.62,
-          offsetWaveFrequency: 6,
+          offset: offset * 0.45 * detailScale,
+          offsetWave: 0.62 * detailScale,
+          offsetWaveFrequency: 6 / detailScale,
           offsetPhase: phase,
         },
         {
@@ -144,9 +145,9 @@ function buildTextureStrokeLayers(
           opacity: 0.72,
           dashOffset: 0,
           lineCap: "round" as const,
-          offset: offset * 0.45 + 0.18,
-          offsetWave: 0.62,
-          offsetWaveFrequency: 6,
+          offset: (offset * 0.45 + 0.18) * detailScale,
+          offsetWave: 0.62 * detailScale,
+          offsetWaveFrequency: 6 / detailScale,
           offsetPhase: phase,
           colorTone: "glint" as const,
         },

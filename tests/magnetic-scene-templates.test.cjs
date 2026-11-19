@@ -19,7 +19,7 @@ const { DEFAULT_SCENE, applyScenePreset } = require("../lib/magnetic-lines/defau
 const { ORGANIC_ATMOSPHERIC_TEMPLATES, SCENE_TEMPLATE_CATEGORIES } = require("../lib/magnetic-lines/sceneTemplates.ts");
 const { getHeartbeatCycles } = require("../lib/magnetic-lines/engine/flowEngine.ts");
 const { resolveLineConfig } = require("../lib/magnetic-lines/engine/resolveConfig.ts");
-const { sanitizeSceneConfig } = require("../lib/magnetic-lines/editor/validate.ts");
+const { sanitizeSceneConfig } = require("../lib/magnetic-lines/sceneValidation.ts");
 const { getTextureLayerStrokeWidth, getTextureStrokeLayers } = require("../lib/magnetic-lines/texture.ts");
 const persistence = require("../lib/magnetic-lines/persistence.ts");
 
@@ -125,7 +125,6 @@ test("the luminous opening preset layers silk, dotted guides, cursor-responsive 
     const last = line.customPath.points.at(-1);
     const direction = first.x > 0.5 && last.x > first.x ? "reverse" : "forward";
     const phaseAtReveal = ((line.flow.phase + (direction === "reverse" ? -1 : 1) * getHeartbeatCycles(line.startDelay, line.flow.speed)) % 1 + 1) % 1;
-    const expectedPhase = 0;
     const phaseDistance = Math.min(phaseAtReveal, 1 - phaseAtReveal);
     return line.flow.direction === direction && phaseDistance < 1e-8;
   }), "each flash starts at its outer endpoint as the filament reveals");

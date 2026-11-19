@@ -39,8 +39,8 @@ export { DEFAULT_SCENE, DEFAULT_GLOBAL, DEFAULT_FLOW, DEFAULT_LINE_ENVIRONMENT, 
 export { FLOW_PRESETS, getFlowPreset, type FlowPresetDefinition } from "./flowPresets";
 export { ORGANIC_ATMOSPHERIC_TEMPLATES, SCENE_TEMPLATE_CATEGORIES, getSceneTemplateById, type SceneTemplateCategory, type SceneTemplateDefinition } from "./sceneTemplates";
 
-export { MagneticLinesEditor, type MagneticLinesEditorProps } from "./editor/MagneticLinesEditor";
-export { sanitizeSceneConfig, makeBlankLine, duplicateLine } from "./editor/validate";
+export { sanitizeSceneConfig, makeBlankLine, duplicateLine } from "./sceneValidation";
+export { GENERATED_SHAPE_PRESETS, createGeneratedShapePath } from "./shapePresets";
 
 export { getActiveTargets, getAllTargetSnapshots, registerTarget, setTargetActive } from "./engine/targetRegistry";
 export { computeLine, createLineRuntimeState, SAMPLES } from "./engine/lineEngine";

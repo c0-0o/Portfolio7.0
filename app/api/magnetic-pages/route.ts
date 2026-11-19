@@ -19,7 +19,7 @@ async function findPageRoutes(directory: string): Promise<string[]> {
     .split(sep)
     .filter((segment) => segment && !(segment.startsWith("(") && segment.endsWith(")")));
   const route = `/${directorySegments.join("/")}`.replace(/\/$/, "") || "/";
-  const localRoutes = hasPage && route !== "/editor" ? [route] : [];
+  const localRoutes = hasPage && route !== "/editor" && route !== "/editor-login" ? [route] : [];
   return [...localRoutes, ...nestedRoutes.flat()];
 }
 

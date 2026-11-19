@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { RAINBOW_COLORS, type EnvironmentLightConfig, type GlowConfig, type LineColorStyle, type MagneticLineConfig, type MagneticLinesSceneConfig, type Point } from "./types";
 import { getEvenlySpacedColors, normalizeColorWeights } from "./colorWeights";
-import { computeLine, createLineRuntimeState, getAnchorSequenceStepStartTime, getCustomPathPointsInViewport, pathSegmentsFromResult, type AnchorPlaybackState, type LineRuntimeState } from "./engine/lineEngine";
+import { computeLine, createLineRuntimeState, getAnchorSequenceStepStartTime, getCustomPathPointsInViewport, shouldScheduleAnimationFrame, pathSegmentsFromResult, type AnchorPlaybackState, type LineRuntimeState } from "./engine/lineEngine";
 import { createTargetFrameContext, getAllTargetSnapshots, updateTargetOptions } from "./engine/targetRegistry";
 import { getTargetRegisteredActivations } from "./engine/targetLineTriggers";
 import { clamp01, pointsToSmoothPath } from "./engine/math";
@@ -46,6 +46,7 @@ export interface MagneticBackgroundLinesProps {
   selectedGroupLineIds?: string[];
   showTransformHandles?: boolean;
   pauseAnimation?: boolean;
+  animateEffectsWhenPaused?: boolean;
   /** When set, only this line is rendered (Solo mode). */
   soloLineId?: string | null;
   /** Editor-only presentation state; never changes scene configuration. */
@@ -260,6 +261,7 @@ export function MagneticBackgroundLines({
   selectedGroupLineIds = [],
   showTransformHandles = false,
   pauseAnimation = false,
+  animateEffectsWhenPaused = false,
   soloLineId = null,
   focusLineId = null,
   focusOpacity = 0.2,
@@ -342,8 +344,10 @@ export function MagneticBackgroundLines({
   const anchorInteractionStates = useRef(new Map<string, { alwaysSignature: string; alwaysStartedAt: number; hovering: boolean; hasHovered: boolean; hoverStartedAt: number; hoverFrozenTime: number; activeClickPointIds: Set<string>; clickStartedAt: number }>());
   const anchorPlaybackSeekRef = useRef<Map<string, { startedAt: number; pointStartTimes: Map<string, number> }>>(new Map());
   const runtimeTimeRef = useRef(0);
+  const overlayTimeRef = useRef(0);
   const motionScaleRef = useRef(1);
   const pointerRef = useRef({ x: 0, y: 0, active: false, lastMove: 0 });
+  const scheduleFrameRef = useRef<(() => void) | null>(null);
   const viewportRef = useRef({ width: 0, height: 0 });
   const surfaceRectRef = useRef<DOMRect | null>(null);
   const draggingRef = useRef<{
@@ -557,6 +561,25 @@ export function MagneticBackgroundLines({
     ])),
     [config.global.environment, visibleLines],
   );
+  const textureLayersByLineId = useMemo(
+    () => new Map(visibleLines.map((line) => [
+      line.id,
+      getTextureStrokeLayers(
+        line.texture.type,
+        line.texture.scale,
+        line.texture.showThread,
+        line.texture.silkStrands,
+      ),
+    ])),
+    [visibleLines],
+  );
+  const environmentLightsByLineId = useMemo(
+    () => new Map(visibleLines.flatMap((line) => {
+      const environment = lineEnvironmentById.get(line.id);
+      return environment ? [[line.id, getEnvironmentLights(environment)] as const] : [];
+    })),
+    [lineEnvironmentById, visibleLines],
+  );
   const openingLineSignature = visibleLines.map((line) => line.id).join("\0");
   const openingLineOrder = openingLineOrderState?.signature === openingLineSignature
     ? openingLineOrderState.order
@@ -573,6 +596,10 @@ export function MagneticBackgroundLines({
     return () => window.clearTimeout(timeout);
   }, [openingAnimation, openingLineSignature, openingRun, visibleLines.length]);
   const shouldPauseAnimation = pauseAnimation;
+  const hasAnimatedOverlays = visibleLines.some((line) =>
+    line.flow.enabled && line.flow.intensity > 0 && line.flow.opacity > 0 ||
+    line.texture.enabled && line.texture.type === "silk" && line.texture.intensity > 0,
+  );
   useEffect(() => {
     if (!openingAnimation) return;
     const frame = window.requestAnimationFrame(() => {
@@ -592,6 +619,13 @@ export function MagneticBackgroundLines({
   const hasTargetEffects = useMemo(
     () => visibleLines.some((line) => (config.global.magnetismEnabled && line.magnet.enabled) || line.glow.enabled),
     [config.global.magnetismEnabled, visibleLines],
+  );
+  const hasLineInteraction = useMemo(
+    () => visibleLines.some((line) =>
+      line.shape.bendable !== false &&
+      line.lineInteraction.enabled &&
+      line.lineInteraction.strength > 0),
+    [visibleLines],
   );
   const linesWithHigherZ = useMemo(() => {
     const ids = new Set<string>();
@@ -620,7 +654,9 @@ export function MagneticBackgroundLines({
   }, [config.targets]);
 
   useEffect(() => {
+    let active = true;
     function measure() {
+      if (!active) return;
       const el = svgRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
@@ -637,6 +673,7 @@ export function MagneticBackgroundLines({
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, { passive: true });
     return () => {
+      active = false;
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure);
@@ -651,9 +688,11 @@ export function MagneticBackgroundLines({
       pointerRef.current.y = e.clientY - rect.top;
       pointerRef.current.active = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
       pointerRef.current.lastMove = performance.now();
+      scheduleFrameRef.current?.();
     }
     function onLeave() {
       pointerRef.current.active = false;
+      scheduleFrameRef.current?.();
     }
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerleave", onLeave);
@@ -668,15 +707,41 @@ export function MagneticBackgroundLines({
     let raf = 0;
     let last = 0;
     let runtimeTime = runtimeTimeRef.current;
+    let overlayTime = overlayTimeRef.current;
+
+    function scheduleFrame(force = false) {
+      if (
+        !raf &&
+        !document.hidden &&
+        (force || shouldScheduleAnimationFrame(
+          shouldPauseAnimation,
+          animateEffectsWhenPaused,
+          hasAnimatedOverlays,
+          pointerRef.current.active,
+          runtimeStates.current.values(),
+        ))
+      ) {
+        raf = requestAnimationFrame(frame);
+      }
+    }
 
     function frame(now: number) {
-      if (!shouldPauseAnimation) raf = requestAnimationFrame(frame);
+      raf = 0;
+      if (document.hidden) {
+        last = 0;
+        return;
+      }
+      scheduleFrame();
       const dt = last === 0 ? 0 : Math.min(0.05, (now - last) / 1000);
       const motionScale = motionScaleRef.current;
       last = now;
       const frameDt = dt;
 
-      if (config.animation.playing) runtimeTime += dt * config.animation.speedMultiplier;
+      if (!shouldPauseAnimation && config.animation.playing) runtimeTime += dt * config.animation.speedMultiplier;
+      if (animateEffectsWhenPaused && hasAnimatedOverlays) {
+        overlayTime += dt * config.animation.speedMultiplier;
+        overlayTimeRef.current = overlayTime;
+      }
 
 
       const pointerLocal = surfaceRectRef.current
@@ -688,6 +753,7 @@ export function MagneticBackgroundLines({
 
       const surfaceOffset = surfaceRectRef.current ? { x: surfaceRectRef.current.left, y: surfaceRectRef.current.top } : { x: 0, y: 0 };
       const time = runtimeTime;
+      const effectTime = animateEffectsWhenPaused && hasAnimatedOverlays ? overlayTime : time;
       const targetFrameContext = hasTargetEffects ? createTargetFrameContext(config.targets) : [];
 
       runtimeTimeRef.current = runtimeTime;
@@ -759,10 +825,6 @@ export function MagneticBackgroundLines({
         frameEntries.push({ line, resolvedLine, lineEnvironment, lineState, anchorPlayback, lineTime, result });
       }
 
-      const hasLineInteraction = frameEntries.some(({ resolvedLine }) =>
-        resolvedLine.shape.bendable !== false &&
-        resolvedLine.lineInteraction.enabled &&
-        resolvedLine.lineInteraction.strength > 0);
       const interactionOffsets = hasLineInteraction
         ? computeLineInteractionOffsets(
             frameEntries.map(({ resolvedLine, result }) => ({
@@ -789,9 +851,12 @@ export function MagneticBackgroundLines({
         renderedResults.set(entry.resolvedLine.id, result);
       }
 
-      const activeGlowSources = new Set(frameEntries
-        .filter((entry) => entry.result.glowStops.some((intensity) => intensity > 0))
-        .map((entry) => entry.line.id));
+      const activeGlowSources = new Map(frameEntries.flatMap((entry) => {
+        const result = renderedResults.get(entry.resolvedLine.id);
+        return result?.glowStops.some((intensity) => intensity > 0)
+          ? [[entry.line.id, result.glowStops] as const]
+          : [];
+      }));
       const neighborGlowTargets = activeGlowSources.size > 0
         ? computeNeighborGlowTargets(
             frameEntries.flatMap((entry) => {
@@ -800,6 +865,7 @@ export function MagneticBackgroundLines({
                 ? [{
                   id: entry.line.id,
                   points: result.points,
+                  segmentLengths: result.segmentLengths,
                   config: entry.resolvedLine.outerGlow,
                 }]
                 : [];
@@ -815,6 +881,12 @@ export function MagneticBackgroundLines({
       for (const entry of frameEntries) {
         const result = renderedResults.get(entry.resolvedLine.id);
         if (!result) continue;
+        if (!entry.resolvedLine.outerGlow.enabled) {
+          entry.lineState.outerGlowIntensity.fill(0);
+          result.outerGlowStops.fill(0);
+          result.maxOuterGlow = 0;
+          continue;
+        }
         const target = neighborGlowTargets.get(entry.line.id) ?? [];
         let maxOuterGlow = 0;
         for (let i = 0; i < entry.lineState.outerGlowIntensity.length; i++) {
@@ -880,7 +952,7 @@ export function MagneticBackgroundLines({
         movePathRefs.current.get(entry.line.id)?.setAttribute("d", result.d);
         triggerPathRefs.current.get(entry.line.id)?.setAttribute("d", result.d);
         const lineEnvironment = entry.lineEnvironment;
-        for (const light of getEnvironmentLights(lineEnvironment)) {
+        for (const light of environmentLightsByLineId.get(entry.line.id) ?? []) {
           environmentLightPathRefs.current.get(`${entry.line.id}:${light.id}`)?.setAttribute("d", result.d);
         }
         const colorGradient = colorGradientRefs.current.get(entry.line.id);
@@ -903,7 +975,7 @@ export function MagneticBackgroundLines({
           const hidesBaseStroke = entry.resolvedLine.texture.enabled &&
             (entry.resolvedLine.texture.type === "silk" || entry.resolvedLine.texture.type === "metal");
           pathRefs.current.get(entry.line.id)?.setAttribute("stroke", hidesBaseStroke ? "transparent" : animatedColor);
-          for (const layer of getTextureStrokeLayers(entry.resolvedLine.texture.type, entry.resolvedLine.texture.scale, entry.resolvedLine.texture.showThread, entry.resolvedLine.texture.silkStrands)) {
+          for (const layer of textureLayersByLineId.get(entry.line.id) ?? []) {
             if (layer.colorTone) continue;
             texturePathRefs.current.get(`${entry.line.id}:${layer.id}`)?.setAttribute("stroke", animatedColor);
           }
@@ -915,12 +987,7 @@ export function MagneticBackgroundLines({
           (lineEnvironment.airflowPaths ?? [lineEnvironment.airflowPath]).some((path) => path.length >= 2)
           ? Math.min(1.5, Math.max(0, lineEnvironment.airflowStrength))
           : 0;
-        const textureLayers = getTextureStrokeLayers(
-          entry.resolvedLine.texture.type,
-          entry.resolvedLine.texture.scale,
-          entry.resolvedLine.texture.showThread,
-          entry.resolvedLine.texture.silkStrands,
-        );
+        const textureLayers = textureLayersByLineId.get(entry.line.id) ?? [];
         const metalChainPaths = entry.resolvedLine.texture.enabled && entry.resolvedLine.texture.type === "metal"
           ? getMetalChainPaths(
               result.points,
@@ -941,12 +1008,12 @@ export function MagneticBackgroundLines({
                 layer.offset,
                 result.segmentLengths,
                 (layer.offsetWave ?? 0) * (layer.offsetWaveFollowsAirflow ? silkAirflow : 1),
-                (layer.offsetPhase ?? 0) + time * (layer.motionSpeed ?? 0),
+                (layer.offsetPhase ?? 0) + effectTime * (layer.motionSpeed ?? 0),
                 layer.offsetWaveFrequency ?? 1,
               );
           texturePath?.setAttribute("d", textureD);
           if (entry.resolvedLine.texture.type === "silk" && lineEnvironment.lightEnabled) {
-            for (const light of getEnvironmentLights(lineEnvironment)) {
+            for (const light of environmentLightsByLineId.get(entry.line.id) ?? []) {
               environmentSilkLightPathRefs.current.get(`${entry.line.id}:${light.id}:${layer.id}`)?.setAttribute("d", textureD);
             }
           }
@@ -960,6 +1027,7 @@ export function MagneticBackgroundLines({
           const centerlinePulse = openingAnimation && entry.resolvedLine.flow.effectType === "energy-pulse";
           const heartbeatSinglePath = centerlinePulse &&
             entry.resolvedLine.flow.pulseRhythm === "heartbeat" &&
+            entry.resolvedLine.flow.placement === "along" &&
             result.segmentLengths.length === 1;
           const flowPaths = textureEnabled && !centerlinePulse
             ? getMaterialFlowPaths(
@@ -984,7 +1052,11 @@ export function MagneticBackgroundLines({
             entry.resolvedLine.flow.effectType === "fiber-optic"
             ? { ...entry.resolvedLine.flow, strandCount: 1 }
             : entry.resolvedLine.flow;
-          const flowTime = openingAnimation ? time : entry.lineTime;
+          const flowTime = openingAnimation
+            ? time
+            : animateEffectsWhenPaused && hasAnimatedOverlays
+              ? effectTime
+              : entry.lineTime;
           const flowWidth = entry.resolvedLine.appearance.width * (
               textureEnabled ? getMaterialFlowWidthScale(textureType) : 1
           );
@@ -996,6 +1068,7 @@ export function MagneticBackgroundLines({
                   flowTime,
                   flowWidth,
                   motionScale < 0.2,
+                  entry.resolvedLine.appearance.width,
                 )
               : renderHeartbeatPulsePathEffect(
                   result.d,
@@ -1136,9 +1209,26 @@ export function MagneticBackgroundLines({
       }
     }
 
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [config, configuredLineIds, getAnchorPlayback, hasTargetEffects, instancePrefix, interactive, lineEnvironmentById, linesWithHigherZ, openingAnimation, selectedLineId, shouldPauseAnimation, showGlowRadiusPreview, soloLineId, viewportSize.height, viewportSize.width, visibleLineById, visibleLines]);
+    scheduleFrameRef.current = () => scheduleFrame();
+
+    function onVisibilityChange() {
+      last = 0;
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else {
+        scheduleFrame(true);
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    scheduleFrame(true);
+    return () => {
+      scheduleFrameRef.current = null;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      cancelAnimationFrame(raf);
+    };
+  }, [animateEffectsWhenPaused, config, configuredLineIds, environmentLightsByLineId, getAnchorPlayback, hasAnimatedOverlays, hasLineInteraction, hasTargetEffects, instancePrefix, interactive, lineEnvironmentById, linesWithHigherZ, openingAnimation, selectedLineId, shouldPauseAnimation, showGlowRadiusPreview, soloLineId, textureLayersByLineId, viewportSize.height, viewportSize.width, visibleLineById, visibleLines]);
 
 
 

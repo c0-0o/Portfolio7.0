@@ -1,21 +1,28 @@
 # Magnetic Lines Editor
 
-This guide covers the Magnetic Lines Editor only. It does not document the
-separate Cursor Effects editor.
+This guide covers the Magnetic Lines Editor. The Cursor Effects editor is
+available as a mode on the same `/editor` page.
 
 ## Open the editor
 
 1. Install the project dependencies with `npm install` if needed.
 2. Start the development server with `npm run dev`.
-3. Open [`http://localhost:3000/editor`](http://localhost:3000/editor).
+3. Open [`http://localhost:3000/editor`](http://localhost:3000/editor) and enter
+   the shared editor password.
 
-The editor is available in development; the `/editor` page intentionally renders
-nothing in production.
+The Magnetic Lines and Cursor Effects editors are modes on `/editor`. They are
+available only in development; the `/editor` page intentionally renders nothing
+in production. The editor page, page-discovery API, and scene-writing API require
+an authenticated editor session.
+
+Set `EDITOR_PASSWORD` in the ignored `.env.local` file for local development and
+in the server environment when sharing the editor. Do not commit the password.
 
 ## Basic workflow
 
 1. Choose a route in **Editing page**. Each route has its own background scene;
-   edits auto-save in this browser.
+   edits auto-save in this browser. The menu includes the 404 and
+   under-construction pages.
 2. Edit the scene in the live canvas and the left/right panels. Use the layer
    list to select, hide, solo, reorder, rename, duplicate, or delete lines.
 3. Use **Preview page** to inspect the current unsaved scene with the selected

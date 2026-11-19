@@ -7,14 +7,15 @@ import { RAINBOW_COLORS } from "../types";
 import { normalizeColorWeights, setColorWeight } from "../colorWeights";
 import { MagneticBackgroundLines, type DebugFlags } from "../MagneticBackgroundLines";
 import { getPortfolioDefaultScene } from "../PersistentMagneticBackground";
+import { normalizePortfolioPageScene } from "../portfolioScene";
 import { DEFAULT_GLOBAL, DEFAULT_SCENE, MOTION_PRESETS, SCENE_PRESETS, applyScenePreset } from "../defaultScene";
-import { sanitizeSceneConfig, makeBlankLine, duplicateLine } from "./validate";
-import { createGeneratedShapePath, GENERATED_SHAPE_PRESETS } from "./shapePresets";
+import { sanitizeSceneConfig, makeBlankLine, duplicateLine } from "../sceneValidation";
+import { createGeneratedShapePath, GENERATED_SHAPE_PRESETS } from "../shapePresets";
 import { mergePathPointSequence } from "./pathEditing";
 import { useHistory } from "./history";
 import { getAllTargetSnapshots, type TargetSnapshot } from "../engine/targetRegistry";
 import { getTargetLineActivations, type TargetLineEffect } from "../engine/targetLineTriggers";
-import { deleteReusableLineShape, listMagneticPagePaths, listReusableLineShapes, loadPersistedPageScene, normalizeMagneticPagePath, registerMagneticPagePath, removeMagneticPagePath, removePageScenePreview, removePersistedPageScene, savePageScenePreview, savePersistedPageScene, saveReusableLineShape, SCENE_CHANGE_EVENT, type ReusableLineShape } from "../persistence";
+import { BUILT_IN_PAGE_PATHS, deleteReusableLineShape, listMagneticPagePaths, listReusableLineShapes, loadPersistedPageScene, normalizeMagneticPagePath, registerMagneticPagePath, removeMagneticPagePath, removePageScenePreview, removePersistedPageScene, savePageScenePreview, savePersistedPageScene, saveReusableLineShape, SCENE_CHANGE_EVENT, syncPersistedPageScenesFromProject, type ReusableLineShape } from "../persistence";
 import { resolveLineConfig } from "../engine/resolveConfig";
 import { getTargetAssignedLineIds, updateTargetLineAssignments } from "./targetAssignments";
 import { customPathPointFromViewport, getCustomPathPointsInViewport } from "../engine/lineEngine";
@@ -81,7 +82,13 @@ function TargetThumbnail({
 }
 
 function pageRouteLabel(path: string): string {
-  const names: Record<string, string> = { "/": "Home", "/about": "About", "/opening": "Opening", "/projects": "Projects" };
+  const names: Record<string, string> = {
+    "/": "Home",
+    "/about": "About",
+    "/opening": "Opening",
+    "/under-construction": "Under construction",
+    "/not-found": "404 page",
+  };
   if (names[path]) return `${names[path]} (${path})`;
   const lastSegment = path.split("/").filter(Boolean).at(-1) ?? path;
   let decodedSegment = lastSegment;
@@ -387,14 +394,39 @@ function hsvToHex(hue: number, saturation: number, value: number): string {
   return `#${hexChannel(red)}${hexChannel(green)}${hexChannel(blue)}`;
 }
 
-function ColorPickerControl({ label, color, onChange }: { label: string; color: string; onChange: (color: string) => void }) {
+function ColorPickerControl({
+  label,
+  color,
+  onChange,
+  onChangeStart,
+  onChangeEnd,
+}: {
+  label: string;
+  color: string;
+  onChange: (color: string) => void;
+  onChangeStart?: () => void;
+  onChangeEnd?: () => void;
+}) {
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const hueRef = useRef<HTMLDivElement | null>(null);
+  const changingRef = useRef(false);
   const [draft, setDraft] = useState(color);
   const { hue, saturation, value } = hexToHsv(color);
+
+  function startChange() {
+    if (changingRef.current) return;
+    changingRef.current = true;
+    onChangeStart?.();
+  }
+
+  function endChange() {
+    if (!changingRef.current) return;
+    changingRef.current = false;
+    onChangeEnd?.();
+  }
 
   function openPicker() {
     const trigger = triggerRef.current;
@@ -475,21 +507,28 @@ function ColorPickerControl({ label, color, onChange }: { label: string; color: 
           aria-valuetext={color}
           style={{ backgroundColor: `hsl(${hue} 100% 50%)` }}
           onPointerDown={(event) => {
+            startChange();
             event.currentTarget.setPointerCapture(event.pointerId);
             updateBoard(event);
           }}
           onPointerMove={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) updateBoard(event);
           }}
+          onPointerUp={endChange}
+          onPointerCancel={endChange}
+          onLostPointerCapture={endChange}
           onKeyDown={(event) => {
             const change = event.shiftKey ? 0.1 : 0.02;
             if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "ArrowDown") {
               event.preventDefault();
+              startChange();
               const nextSaturation = Math.max(0, Math.min(1, saturation + (event.key === "ArrowRight" ? change : event.key === "ArrowLeft" ? -change : 0)));
               const nextValue = Math.max(0, Math.min(1, value + (event.key === "ArrowUp" ? change : event.key === "ArrowDown" ? -change : 0)));
               setHsv(hue, nextSaturation, nextValue);
             }
           }}
+          onKeyUp={endChange}
+          onBlur={endChange}
         >
           <span className="ml-color-saturation-marker" style={{ left: `${saturation * 100}%`, top: `${(1 - value) * 100}%` }} />
         </div>
@@ -503,18 +542,25 @@ function ColorPickerControl({ label, color, onChange }: { label: string; color: 
           aria-valuemax={360}
           aria-valuenow={Math.round(hue)}
           onPointerDown={(event) => {
+            startChange();
             event.currentTarget.setPointerCapture(event.pointerId);
             updateHue(event);
           }}
           onPointerMove={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) updateHue(event);
           }}
+          onPointerUp={endChange}
+          onPointerCancel={endChange}
+          onLostPointerCapture={endChange}
           onKeyDown={(event) => {
             if (event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "ArrowDown") {
               event.preventDefault();
+              startChange();
               setHsv((hue + (event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : 359)) % 360, saturation, value);
             }
           }}
+          onKeyUp={endChange}
+          onBlur={endChange}
         >
           <span className="ml-color-hue-marker" style={{ left: `${(hue / 360) * 100}%` }} />
         </div>
@@ -536,13 +582,17 @@ function ColorPickerControl({ label, color, onChange }: { label: string; color: 
               setDraft(next);
               if (/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(next)) {
                 const normalized = next.length === 4 ? `#${[...next.slice(1)].map((digit) => `${digit}${digit}`).join("")}` : next;
+                startChange();
                 onChange(normalized);
               }
             }}
-            onBlur={commitHex}
+            onBlur={() => {
+              commitHex();
+              endChange();
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") { event.preventDefault(); commitHex(); event.currentTarget.blur(); }
-              if (event.key === "Escape") { setDraft(color); popoverRef.current?.hidePopover(); }
+              if (event.key === "Escape") { setDraft(color); endChange(); popoverRef.current?.hidePopover(); }
             }}
           />
         </label>
@@ -551,12 +601,15 @@ function ColorPickerControl({ label, color, onChange }: { label: string; color: 
   );
 }
 
-function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChange, onColorStyleChange, onSpeedChange, onSpeedCommitStart, onSpeedCommitEnd, onColorWeightsChange }: {
+function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChange, onColorStyleChange, onColorStyleLiveChange, onColorChangeStart, onColorChangeEnd, onSpeedChange, onSpeedCommitStart, onSpeedCommitEnd, onColorWeightsChange }: {
   color: string;
   colorStyle?: LineColorStyle;
   colorLabel?: string;
   onColorChange: (color: string) => void;
   onColorStyleChange: (style: LineColorStyle) => void;
+  onColorStyleLiveChange?: (style: LineColorStyle) => void;
+  onColorChangeStart?: () => void;
+  onColorChangeEnd?: () => void;
   onSpeedChange: (speed: number) => void;
   onSpeedCommitStart: () => void;
   onSpeedCommitEnd: () => void;
@@ -570,7 +623,7 @@ function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChang
   const setColor = (index: number, nextColor: string) => {
     const colors = [...style.colors];
     colors[index] = nextColor;
-    onColorStyleChange({ ...style, colors });
+    (onColorStyleLiveChange ?? onColorStyleChange)({ ...style, colors });
   };
   const addColor = () => {
     const colors = [...style.colors, "#5ee6ff"];
@@ -629,7 +682,7 @@ function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChang
         </select>
       </Row>
       {style.type === "solid" ? (
-        <Row label="Color"><ColorPickerControl label={`${colorLabel} color`} color={color} onChange={onColorChange} /></Row>
+        <Row label="Color"><ColorPickerControl label={`${colorLabel} color`} color={color} onChange={onColorChange} onChangeStart={onColorChangeStart} onChangeEnd={onColorChangeEnd} /></Row>
       ) : style.type === "rainbow" ? (
         <div className="ml-rainbow-style">
           <div className="ml-rainbow-preview" style={{ background: `linear-gradient(90deg, ${RAINBOW_COLORS.join(", ")})` }} aria-label="Rainbow colors from red through violet" role="img" />
@@ -687,7 +740,7 @@ function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChang
                   }}
                 >⋮⋮</button>
                 <span className="ml-gradient-stop-name">{style.type === "diamond" ? index === 0 ? "Edge" : index === style.colors.length - 1 ? "Center" : `Color ${index + 1}` : `Color ${index + 1}`}</span>
-                <ColorPickerControl label={`Color ${index + 1}`} color={stopColor} onChange={(nextColor) => setColor(index, nextColor)} />
+                <ColorPickerControl label={`Color ${index + 1}`} color={stopColor} onChange={(nextColor) => setColor(index, nextColor)} onChangeStart={onColorChangeStart} onChangeEnd={onColorChangeEnd} />
                 <button type="button" className="ml-icon-btn ml-gradient-remove" aria-label={`Remove gradient color ${index + 1}`} disabled={style.colors.length <= 2} onClick={() => removeColor(index)}>×</button>
                 {style.type !== "random" && (
                   <div className="ml-gradient-stop-position">
@@ -705,7 +758,9 @@ function ColorStyleEditor({ color, colorStyle, colorLabel = "Line", onColorChang
                         onPointerDown={onSpeedCommitStart}
                         onChange={(event) => updateColorWeight(index, Number(event.target.value))}
                         onPointerUp={onSpeedCommitEnd}
-                        onKeyUp={(event) => { if (event.key.startsWith("Arrow")) onSpeedCommitEnd(); }}
+                        onPointerCancel={onSpeedCommitEnd}
+                        onKeyDown={(event) => { if (isRangeAdjustmentKey(event.key)) onSpeedCommitStart(); }}
+                        onKeyUp={(event) => { if (isRangeAdjustmentKey(event.key)) onSpeedCommitEnd(); }}
                         onBlur={onSpeedCommitEnd}
                       />
                       <div className="ml-gradient-stop-position-value">
@@ -822,6 +877,9 @@ function FlowSettings({ flow, onLive, onDiscrete, onCommitStart, onCommitEnd }: 
       <Row label="Direction"><select className="ml-select" value={flow.direction} onChange={(event) => onDiscrete({ ...flow, direction: event.target.value as FlowConfig["direction"], preset: null })}>
         <option value="forward">Forward</option><option value="reverse">Reverse</option><option value="both">Both ways</option><option value="alternating">Alternating</option>
       </select></Row>
+      <Row label={<>Placement <Tooltip title="Flow placement" description="Inside narrows the effect on the stroke; Along traces its centerline; Around and Outside add parallel traces at increasing distances; Mixed combines center and side traces." /></>}><select className="ml-select" value={flow.placement} onChange={(event) => onDiscrete({ ...flow, placement: event.target.value as FlowConfig["placement"], preset: null })}>
+        <option value="inside">Inside</option><option value="along">Along</option><option value="around">Around</option><option value="outside">Outside</option><option value="mixed">Mixed</option>
+      </select></Row>
       <SliderField label="Speed" value={flow.speed} min={0} max={3} onCommitStart={onCommitStart} onCommitEnd={onCommitEnd} onLive={(speed) => changeLive({ speed })} />
       <SliderField label="Intensity" value={flow.intensity} min={0} max={2} onCommitStart={onCommitStart} onCommitEnd={onCommitEnd} onLive={(intensity) => changeLive({ intensity })} />
       <SliderField label="Width" value={flow.width} min={0.25} max={8} onCommitStart={onCommitStart} onCommitEnd={onCommitEnd} onLive={(width) => changeLive({ width })} />
@@ -861,6 +919,11 @@ function FlowSettings({ flow, onLive, onDiscrete, onCommitStart, onCommitEnd }: 
       {(flow.effectType === "continuous-light" || flow.effectType === "energy-pulse") && (
         <SliderField label={flow.effectType === "energy-pulse" ? "Pulse width" : "Tail length"} value={flow.effectType === "energy-pulse" ? flow.pulseWidth : flow.tailLength} min={0.02} max={0.75} onCommitStart={onCommitStart} onCommitEnd={onCommitEnd} onLive={(value) => changeLive(flow.effectType === "energy-pulse" ? { pulseWidth: value } : { tailLength: value })} />
       )}
+      {flow.effectType === "energy-pulse" && (
+        <Row label="Pulse rhythm"><select className="ml-select" value={flow.pulseRhythm} onChange={(event) => onDiscrete({ ...flow, pulseRhythm: event.target.value as FlowConfig["pulseRhythm"], preset: null })}>
+          <option value="continuous">Continuous</option><option value="heartbeat">Heartbeat</option>
+        </select></Row>
+      )}
       <fieldset className="ml-flow-layers">
         <legend>Visible layers</legend>
         {(["current", "core", "secondary", "glow", "branches", "sparks"] as const).map((name) => (
@@ -871,10 +934,9 @@ function FlowSettings({ flow, onLive, onDiscrete, onCommitStart, onCommitEnd }: 
   );
 }
 
-function formatNumericValue(value: number, step: number): string {
+function formatNumericValue(value: number): string {
   if (!Number.isFinite(value)) return "0";
-  const decimals = Math.max(0, Math.min(6, (String(step).split(".")[1] || "").length));
-  return value.toFixed(decimals).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+  return value.toFixed(6).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 }
 
 function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY, step, className = "ml-num", disabled = false, onChange, onCommitStart, onCommitEnd }: {
@@ -890,7 +952,7 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
   onCommitEnd?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => formatNumericValue(value, step));
+  const [draft, setDraft] = useState(() => formatNumericValue(value));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const scrubRef = useRef<{ pointerId: number; startY: number; startValue: number; active: boolean } | null>(null);
   const suppressClickRef = useRef(false);
@@ -923,8 +985,8 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
       return;
     }
     const parsed = Number(draft);
-    if (draft.trim() !== "" && Number.isFinite(parsed)) onChange(clamp(parsed));
-    else setDraft(formatNumericValue(value, safeStep));
+    if (draft.trim() !== "" && Number.isFinite(parsed)) onChange(Number(clamp(parsed).toFixed(6)));
+    else setDraft(formatNumericValue(value));
     if (editStartedRef.current) onCommitEnd?.();
     editStartedRef.current = false;
     setEditing(false);
@@ -951,14 +1013,14 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
             editStartedRef.current = true;
             onCommitStart?.();
           }
-          setDraft(formatNumericValue(value, safeStep));
+          setDraft(formatNumericValue(value));
         }}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
           if (event.key === "Escape") {
             cancelEditRef.current = true;
-            setDraft(formatNumericValue(value, safeStep));
+            setDraft(formatNumericValue(value));
             event.currentTarget.blur();
           }
         }}
@@ -972,7 +1034,7 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
       type="button"
       className={`${className} ml-scrub-number`}
       disabled={disabled}
-      aria-label={`${label}: ${formatNumericValue(value, safeStep)}. Drag up or down to adjust, or click to type.`}
+      aria-label={`${label}: ${formatNumericValue(value)}. Drag up or down to adjust, or click to type.`}
       title="Drag up or down to adjust; click to type a value."
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -1008,7 +1070,7 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
           suppressClickRef.current = false;
           return;
         }
-        setDraft(formatNumericValue(value, safeStep));
+        setDraft(formatNumericValue(value));
         setEditing(true);
       }}
       onKeyDown={(event) => {
@@ -1018,7 +1080,7 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
         }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          setDraft(formatNumericValue(value, safeStep));
+          setDraft(formatNumericValue(value));
           setEditing(true);
         }
       }}
@@ -1027,9 +1089,13 @@ function ScrubNumberField({ label, value, min = Number.NEGATIVE_INFINITY, max = 
         adjustBy(event.deltaY < 0 ? safeStep : -safeStep);
       }}
     >
-      {formatNumericValue(value, safeStep)}
+      {formatNumericValue(value)}
     </button>
   );
+}
+
+function isRangeAdjustmentKey(key: string) {
+  return key.startsWith("Arrow") || key === "Home" || key === "End" || key === "PageUp" || key === "PageDown";
 }
 
 function SliderField({ label, value, min, max, sliderMax, step = 0.01, unit = "", description, example, disabled = false, onLive, onCommitStart, onCommitEnd }: SliderFieldProps) {
@@ -1052,12 +1118,14 @@ function SliderField({ label, value, min, max, sliderMax, step = 0.01, unit = ""
           step={step}
           value={Math.min(effectiveSliderMax, Math.max(min, value))}
           aria-label={label}
-          aria-valuetext={`${formatNumericValue(value, step)}${unit ? ` ${unit}` : ""}`}
+          aria-valuetext={`${formatNumericValue(value)}${unit ? ` ${unit}` : ""}`}
           onFocus={onCommitStart}
           onPointerDown={onCommitStart}
           onChange={(e) => onLive(Number(e.target.value))}
           onPointerUp={onCommitEnd}
-          onKeyUp={(e) => { if (e.key === "Enter") onCommitEnd(); }}
+          onPointerCancel={onCommitEnd}
+          onKeyDown={(e) => { if (isRangeAdjustmentKey(e.key)) onCommitStart(); }}
+          onKeyUp={(e) => { if (isRangeAdjustmentKey(e.key)) onCommitEnd(); }}
           onBlur={onCommitEnd}
         />
       </div>
@@ -1130,7 +1198,7 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   const [anchorTargetToAdd, setAnchorTargetToAdd] = useState("start");
   const [showShapePointLabels, setShowShapePointLabels] = useState(true);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
-  const [timelinePreviewPlaying, setTimelinePreviewPlaying] = useState(false);
+  const [timelinePreviewPlaying, setTimelinePreviewPlaying] = useState(true);
   const [anchorPlaybackSeek, setAnchorPlaybackSeek] = useState<{ lineId: string; stepIndex: number; requestId: number } | null>(null);
   const anchorPlaybackSeekRequestRef = useRef(0);
   const [showAllShapeTracks, setShowAllShapeTracks] = useState(false);
@@ -1160,13 +1228,17 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [importText, setImportText] = useState("");
+  const [ioError, setIoError] = useState("");
   const [targetSnapshots, setTargetSnapshots] = useState<TargetSnapshot[]>([]);
   const [panel, setPanel] = useState<"editor" | "targets">("editor");
   const [editorMode, setEditorMode] = useState<"magnetic" | "cursor">("magnetic");
   const [globalTargetLineId, setGlobalTargetLineId] = useState<string | null>(config.lines[0]?.id || null);
-  const [pagePaths, setPagePaths] = useState<string[]>(["/", "/about", "/projects"]);
+  const [pagePaths, setPagePaths] = useState<string[]>(BUILT_IN_PAGE_PATHS);
+  const discoveredPagePathsRef = useRef<string[]>([]);
   const [pagePath, setPagePath] = useState("/");
   const [pageSceneError, setPageSceneError] = useState("");
+  const [pageActionLoading, setPageActionLoading] = useState<"save-test" | "clear-page" | "forget-page" | null>(null);
+  const [pageSaveStatus, setPageSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pagePreviewToken, setPagePreviewToken] = useState<string | null>(null);
   const [targetPickToken, setTargetPickToken] = useState<string | null>(null);
   const [targetPickTargetId, setTargetPickTargetId] = useState<string | null>(null);
@@ -1207,7 +1279,16 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   const pageSaveTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
+    let active = true;
     const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          await syncPersistedPageScenesFromProject();
+        } catch (error) {
+          console.error("Could not load magnetic-scene data from project files.", error);
+          if (active) setPageSceneError("Could not load saved page backgrounds from project files. Changes cannot be saved until the project store is available.");
+        }
+        if (!active) return;
       let restoredPagePath: string | null = null;
       try {
         restoredPagePath = normalizeMagneticPagePath(
@@ -1218,7 +1299,24 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
       }
 
       if (restoredPagePath) {
-        const restoredScene = loadPersistedPageScene(restoredPagePath) ?? getPortfolioDefaultScene(restoredPagePath);
+        const savedScene = loadPersistedPageScene(restoredPagePath);
+        const defaultScene = getPortfolioDefaultScene(restoredPagePath);
+        const restoredScene = normalizePortfolioPageScene(
+          restoredPagePath,
+          savedScene ?? defaultScene,
+          defaultScene,
+        );
+        if (savedScene && restoredScene !== savedScene) {
+          try {
+            if (!await savePersistedPageScene(restoredPagePath, restoredScene)) {
+              console.error("Could not save the updated page background scene.");
+              setPageSceneError("Could not save the updated page background to project files.");
+            }
+          } catch (error) {
+            console.error("Could not save the updated page background scene.", error);
+            setPageSceneError("Could not save the updated page background to project files.");
+          }
+        }
         loadedPagePathRef.current = restoredPagePath;
         sceneLoadedIntoEditorRef.current = restoredScene;
         setPagePath(restoredPagePath);
@@ -1238,16 +1336,37 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
           /* ignore corrupt localStorage */
         }
       }
-      setPagePaths(listMagneticPagePaths());
+      setPagePaths(BUILT_IN_PAGE_PATHS);
       setSavedLineShapes(listReusableLineShapes());
       setStorageLoaded(true);
+      })();
     }, 0);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
     if (!storageLoaded || loadedPagePathRef.current === pagePath) return;
-    const scene = loadPersistedPageScene(pagePath) ?? getPortfolioDefaultScene(pagePath);
+    const savedScene = loadPersistedPageScene(pagePath);
+    const defaultScene = getPortfolioDefaultScene(pagePath);
+    const scene = normalizePortfolioPageScene(
+      pagePath,
+      savedScene ?? defaultScene,
+      defaultScene,
+    );
+    if (savedScene && scene !== savedScene) {
+      void savePersistedPageScene(pagePath, scene).then((saved) => {
+        if (!saved) {
+          console.error("Could not save the updated page background scene.");
+          setPageSceneError("Could not save the updated page background to project files.");
+        }
+      }).catch((error: unknown) => {
+        console.error("Could not save the updated page background scene.", error);
+        setPageSceneError("Could not save the updated page background to project files.");
+      });
+    }
     loadedPagePathRef.current = pagePath;
     sceneLoadedIntoEditorRef.current = scene;
     setConfig(scene);
@@ -1393,16 +1512,27 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     }
     const pending = { path: pagePath, scene: config };
     pendingPageSaveRef.current = pending;
+    setPageSaveStatus("saving");
     const timeout = window.setTimeout(() => {
       if (pendingPageSaveRef.current !== pending) return;
       pageSaveTimeoutRef.current = null;
-      if (!savePersistedPageScene(pending.path, pending.scene)) {
-        setPageSceneError("Could not save this page background. Check browser storage and try again.");
-        return;
-      }
-      pendingPageSaveRef.current = null;
-      registerMagneticPagePath(pending.path);
-      setPageSceneError("");
+      void savePersistedPageScene(pending.path, pending.scene).then((saved) => {
+        if (pendingPageSaveRef.current !== pending) return;
+        if (!saved) {
+          setPageSaveStatus("error");
+          setPageSceneError("Could not save this page background to project files. Check the development server and try again.");
+          return;
+        }
+        pendingPageSaveRef.current = null;
+        registerMagneticPagePath(pending.path);
+        setPageSaveStatus("saved");
+        setPageSceneError("");
+      }).catch((error: unknown) => {
+        if (pendingPageSaveRef.current !== pending) return;
+        console.error(`Could not save the ${pending.path} background to project files.`, error);
+        setPageSaveStatus("error");
+        setPageSceneError("Could not save this page background to project files. Check the development server and try again.");
+      });
     }, 400);
     pageSaveTimeoutRef.current = timeout;
     return () => {
@@ -1412,7 +1542,9 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   }, [config, pagePath, storageLoaded]);
   useEffect(() => {
     const refreshPagePaths = () => {
-      setPagePaths(listMagneticPagePaths());
+      const allPaths = Array.from(new Set([...BUILT_IN_PAGE_PATHS, ...discoveredPagePathsRef.current]));
+      allPaths.sort((left, right) => left === "/" ? -1 : right === "/" ? 1 : left.localeCompare(right));
+      setPagePaths(allPaths);
     };
     let active = true;
     void fetch("/api/magnetic-pages", { cache: "no-store" })
@@ -1432,7 +1564,8 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
       })
       .then((paths) => {
         if (!active) return;
-        const allPaths = Array.from(new Set([...listMagneticPagePaths(), ...paths]));
+        discoveredPagePathsRef.current = paths;
+        const allPaths = Array.from(new Set([...BUILT_IN_PAGE_PATHS, ...paths]));
         allPaths.sort((left, right) => left === "/" ? -1 : right === "/" ? 1 : left.localeCompare(right));
         setPagePaths(allPaths);
       })
@@ -1450,6 +1583,7 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
 
   // Poll the live target registry for the Targets panel (cheap, dev-tool only).
   useEffect(() => {
+    if (editorMode !== "magnetic") return;
     const id = setInterval(() => {
       const nextSnapshots = getAllTargetSnapshots();
       setTargetSnapshots((currentSnapshots) => {
@@ -1470,7 +1604,7 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
       });
     }, 300);
     return () => clearInterval(id);
-  }, []);
+  }, [editorMode]);
 
   // Keyboard undo/redo, skipped while typing in a text field so native text-undo still works.
   useEffect(() => {
@@ -1575,6 +1709,10 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   }
   function updateLineDiscrete(id: string, updater: (l: MagneticLineConfig) => MagneticLineConfig) {
     commitDiscrete((c) => ({ ...c, lines: c.lines.map((l) => (l.id === id ? applyLineUpdate(l, c.global, updater) : l)) }));
+  }
+  function enableLineBending(id: string) {
+    updateLineDiscrete(id, (line) => ({ ...line, shape: { ...line.shape, bendable: true } }));
+    setTimelinePreviewPlaying(true);
   }
 
   const selectedLine = useMemo(() => { const line = config.lines.find((l) => l.id === selectedLineId); return line ? resolveLineConfig(line, config.global) : null; }, [config.lines, config.global, selectedLineId]);
@@ -2789,6 +2927,10 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   // ---- import / export -----------------------------------------------------
 
   function applyPreset(name: string) {
+    if (name === "About") {
+      applyTemplateScene(getPortfolioDefaultScene("/about"));
+      return;
+    }
     commitDiscrete((scene) => sanitizeSceneConfig(applyScenePreset(scene, name)));
   }
 
@@ -2800,35 +2942,46 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     setShowTemplateLibrary(false);
   }
 
-  function saveAndOpenTestPage() {
-    if (!savePendingPageScene(pagePath, config)) return;
+  async function saveAndOpenTestPage() {
+    if (pageActionLoading || !storageLoaded) return;
+    setPageActionLoading("save-test");
+    setPageSaveStatus("saving");
     try {
-      window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, pagePath);
-    } catch {
-      // The saved page remains available even when route restoration cannot be persisted.
+      if (!await savePendingPageScene(pagePath, config)) return;
+      try {
+        window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, pagePath);
+      } catch {
+        // The saved page remains available even when route restoration cannot be persisted.
+      }
+      router.push(pagePath);
+    } finally {
+      setPageActionLoading(null);
     }
-    router.push(pagePath);
   }
 
-  function savePendingPageScene(path = pagePath, scene = config) {
+  async function savePendingPageScene(path = pagePath, scene = config) {
     const pending = pendingPageSaveRef.current;
+    setPageSaveStatus("saving");
     if (pending && pending.path !== path) {
-      if (!savePersistedPageScene(pending.path, pending.scene)) {
-        setPageSceneError("Could not save this page background. Check browser storage and try again.");
+      if (!await savePersistedPageScene(pending.path, pending.scene)) {
+        setPageSaveStatus("error");
+        setPageSceneError("Could not save this page background to project files. Check the development server and try again.");
         return false;
       }
       registerMagneticPagePath(pending.path);
-      pendingPageSaveRef.current = null;
+      if (pendingPageSaveRef.current === pending) pendingPageSaveRef.current = null;
     }
     if (pageSaveTimeoutRef.current) window.clearTimeout(pageSaveTimeoutRef.current);
     pageSaveTimeoutRef.current = null;
-    if (!savePersistedPageScene(path, scene)) {
+    if (!await savePersistedPageScene(path, scene)) {
       pendingPageSaveRef.current = { path, scene };
-      setPageSceneError("Could not save this page background. Check browser storage and try again.");
+      setPageSaveStatus("error");
+      setPageSceneError("Could not save this page background to project files. Check the development server and try again.");
       return false;
     }
-    pendingPageSaveRef.current = null;
+    if (pendingPageSaveRef.current?.path === path) pendingPageSaveRef.current = null;
     registerMagneticPagePath(path);
+    setPageSaveStatus("saved");
     setPageSceneError("");
     return true;
   }
@@ -2839,30 +2992,49 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     pendingPageSaveRef.current = null;
   }
 
-  function flushPendingPageSave() {
+  async function flushPendingPageSave() {
     const pending = pendingPageSaveRef.current;
     if (pageSaveTimeoutRef.current) window.clearTimeout(pageSaveTimeoutRef.current);
     pageSaveTimeoutRef.current = null;
     if (!pending) return true;
-    if (!savePersistedPageScene(pending.path, pending.scene)) {
-      setPageSceneError("Could not save this page background. Check browser storage and try again.");
+    setPageSaveStatus("saving");
+    if (!await savePersistedPageScene(pending.path, pending.scene)) {
+      setPageSaveStatus("error");
+      setPageSceneError("Could not save this page background to project files. Check the development server and try again.");
       return false;
     }
-    pendingPageSaveRef.current = null;
+    if (pendingPageSaveRef.current === pending) pendingPageSaveRef.current = null;
     registerMagneticPagePath(pending.path);
+    setPageSaveStatus("saved");
     setPageSceneError("");
     return true;
   }
 
-  function loadPageForEditing(path: string) {
-    if (path !== pagePath && !flushPendingPageSave()) return;
+  async function loadPageForEditing(path: string) {
+    if (path !== pagePath && !await flushPendingPageSave()) return;
     const pageScene = loadPersistedPageScene(path);
-    const scene = pageScene ?? getPortfolioDefaultScene(path);
+    const defaultScene = getPortfolioDefaultScene(path);
+    const scene = normalizePortfolioPageScene(path, pageScene ?? defaultScene, defaultScene);
+    if (pageScene && scene !== pageScene) {
+      try {
+        if (!await savePersistedPageScene(path, scene)) {
+          setPageSceneError("Could not save the updated page background to project files.");
+          return;
+        }
+      } catch (error) {
+        console.error("Could not save the updated page background scene.", error);
+        setPageSceneError("Could not save the updated page background to project files.");
+        return;
+      }
+    }
     loadedPagePathRef.current = path;
     sceneLoadedIntoEditorRef.current = scene;
-    commitDiscrete(() => scene);
+    commitPending();
+    history.clear();
+    setConfig(scene);
     selectLineForEditing(scene.lines[0]?.id ?? null);
     setPagePath(path);
+    setPageSaveStatus("idle");
     try {
       window.sessionStorage.setItem(EDITOR_PAGE_PATH_KEY, path);
     } catch {
@@ -2897,30 +3069,49 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
     if (target?.selector && !pagePreviewToken) openPagePreview();
   }
 
-  function clearPageScene() {
-    const path = pagePath;
-    if (!removePersistedPageScene(path)) {
-      setPageSceneError("Could not remove this page background. Check browser storage and try again.");
-      return;
+  async function clearPageScene() {
+    if (pageActionLoading) return;
+    setPageActionLoading("clear-page");
+    setPageSaveStatus("saving");
+    try {
+      const path = pagePath;
+      if (!await flushPendingPageSave()) return;
+      if (!await removePersistedPageScene(path)) {
+        setPageSaveStatus("error");
+        setPageSceneError("Could not remove this page background from project files. Check the development server and try again.");
+        return;
+      }
+      discardPendingPageSave();
+      const scene = getPortfolioDefaultScene(path);
+      loadedPagePathRef.current = path;
+      sceneLoadedIntoEditorRef.current = scene;
+      commitDiscrete(() => scene);
+      selectLineForEditing(scene.lines[0]?.id ?? null);
+      setPageSaveStatus("saved");
+      setPageSceneError("");
+    } finally {
+      setPageActionLoading(null);
     }
-    discardPendingPageSave();
-    const scene = getPortfolioDefaultScene(path);
-    loadedPagePathRef.current = path;
-    sceneLoadedIntoEditorRef.current = scene;
-    commitDiscrete(() => scene);
-    selectLineForEditing(scene.lines[0]?.id ?? null);
-    setPageSceneError("");
   }
 
-  function forgetPagePath() {
-    if (!removeMagneticPagePath(pagePath)) {
-      setPageSceneError("Built-in pages cannot be removed from the page list.");
-      return;
+  async function forgetPagePath() {
+    if (pageActionLoading) return;
+    setPageActionLoading("forget-page");
+    setPageSaveStatus("saving");
+    try {
+      if (!await flushPendingPageSave()) return;
+      if (!await removeMagneticPagePath(pagePath)) {
+        setPageSaveStatus("error");
+        setPageSceneError("Built-in pages cannot be removed from the page list.");
+        return;
+      }
+      discardPendingPageSave();
+      const nextPaths = listMagneticPagePaths();
+      setPagePaths(nextPaths);
+      await loadPageForEditing(nextPaths[0] ?? "/");
+    } finally {
+      setPageActionLoading(null);
     }
-    discardPendingPageSave();
-    const nextPaths = listMagneticPagePaths();
-    setPagePaths(nextPaths);
-    loadPageForEditing(nextPaths[0] ?? "/");
   }
 
   function closePagePreview() {
@@ -2938,36 +3129,67 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
   }
 
   function doExport() {
+    setIoError("");
     setImportText(JSON.stringify(config, null, 2));
     setShowIO("export");
   }
-  function copyExport() {
-    navigator.clipboard?.writeText(JSON.stringify(config, null, 2)).catch(() => {});
+  async function copyExport() {
+    if (!navigator.clipboard?.writeText) {
+      setIoError("Clipboard access is unavailable. Select and copy the JSON below.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+      setIoError("");
+    } catch (error) {
+      console.error("Could not copy the magnetic-lines configuration.", error);
+      setIoError("Could not copy to the clipboard. Select and copy the JSON below.");
+    }
   }
   function downloadExport() {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "magnetic-lines-scene.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "magnetic-lines-scene.json";
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setIoError("");
+    } catch (error) {
+      console.error("Could not download the magnetic-lines configuration.", error);
+      setIoError("Could not download the configuration. Try copying the JSON instead.");
+    }
   }
   function doImport() {
     try {
-      const parsed = JSON.parse(importText);
+      const parsed: unknown = JSON.parse(importText);
       const safe = sanitizeSceneConfig(parsed);
       commitDiscrete(() => safe);
       selectLineForEditing(safe.lines[0]?.id || null);
+      setIoError("");
       setShowIO(null);
-    } catch {
-      // Malformed JSON ? keep the dialog open with what the user typed, don't crash.
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "The JSON could not be parsed.";
+      setIoError(`Could not import configuration: ${details}`);
     }
   }
   function onImportFile(file: File) {
     const reader = new FileReader();
-    reader.onload = () => setImportText(String(reader.result || ""));
-    reader.readAsText(file);
+    reader.onload = () => {
+      setImportText(typeof reader.result === "string" ? reader.result : "");
+      setIoError("");
+    };
+    reader.onerror = () => {
+      console.error("Could not read the magnetic-lines configuration file.", reader.error);
+      setIoError("Could not read that file. Try another JSON file or paste its contents.");
+    };
+    try {
+      reader.readAsText(file);
+    } catch (error) {
+      console.error("Could not read the magnetic-lines configuration file.", error);
+      setIoError("Could not read that file. Try another JSON file or paste its contents.");
+    }
   }
 
   const g = config.global;
@@ -3223,12 +3445,14 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
             ) : (
               <div className="ml-page-controls" aria-label="Page background controls">
                 <label className="ml-page-select-wrap">
-                  <span>Editing page · auto-saves</span>
+                  <span className="ml-page-save-status" aria-live="polite">
+                    {pageSaveStatus === "saving" ? "Saving…" : pageSaveStatus === "saved" ? "Saved · auto-saves" : pageSaveStatus === "error" ? "Save failed" : "Editing page · auto-saves"}
+                  </span>
                   <select
                     className="ml-select ml-page-select"
                     aria-label="Editing page"
                     value={pagePath}
-                    disabled={!storageLoaded}
+                    disabled={!storageLoaded || pageActionLoading !== null}
                     onChange={(event) => {
                       loadPageForEditing(event.target.value);
                     }}
@@ -3239,7 +3463,15 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                 <button className="ml-btn ml-page-preview-button" type="button" onClick={() => openPagePreview()}>Preview page</button>
               </div>
             )}
-            <button className="ml-btn ml-primary" onClick={saveAndOpenTestPage}>Save &amp; Test</button>
+            <button
+              className="ml-btn ml-primary"
+              onClick={saveAndOpenTestPage}
+              disabled={!storageLoaded || pageActionLoading !== null}
+              aria-busy={pageActionLoading === "save-test" || undefined}
+            >
+              {pageActionLoading === "save-test" && <span className="ml-btn-spinner" aria-hidden="true" />}
+              {pageActionLoading === "save-test" ? "Saving…" : "Save & Test"}
+            </button>
             <details className="ml-overflow-menu">
               <summary aria-label="More editor actions" title="More editor actions">⋮</summary>
               <div className="ml-overflow-panel">
@@ -3268,20 +3500,42 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                   <strong>Presets &amp; templates</strong>
                   <small className="ml-texture-description">Select a page first; applying a preset or template assigns it to that page and auto-saves it.</small>
                   <select className="ml-select ml-menu-select" defaultValue="" onChange={(e) => { if (e.target.value) applyPreset(e.target.value); e.currentTarget.value = ""; }}>
-                    <option value="">Load preset</option>{Object.keys(SCENE_PRESETS).map((name) => <option key={name} value={name}>{name}</option>)}
+                    <option value="">Load preset</option>
+                    <optgroup label="Full scene">
+                      <option value="About">About — reference background</option>
+                    </optgroup>
+                    {Object.keys(SCENE_PRESETS).map((name) => <option key={name} value={name}>{name}</option>)}
                   </select>
                   <button className="ml-menu-action" type="button" onClick={() => setShowTemplateLibrary(true)}>Open scene template library</button>
                 </section>
                 <section className="ml-overflow-section">
                   <strong>Page backgrounds</strong>
                   <p className="ml-page-scene-hint">Choose a page above to edit its background. Changes save automatically; use the page default to remove a page override.</p>
-                  <button className="ml-menu-action" type="button" onClick={clearPageScene}>Use page default</button>
-                  <button className="ml-menu-action ml-danger" type="button" onClick={forgetPagePath}>Remove selected page from list</button>
+                  <button
+                    className="ml-menu-action"
+                    type="button"
+                    onClick={clearPageScene}
+                    disabled={pageActionLoading !== null}
+                    aria-busy={pageActionLoading === "clear-page" || undefined}
+                  >
+                    {pageActionLoading === "clear-page" && <span className="ml-btn-spinner" aria-hidden="true" />}
+                    {pageActionLoading === "clear-page" ? "Saving…" : "Use page default"}
+                  </button>
+                  <button
+                    className="ml-menu-action ml-danger"
+                    type="button"
+                    onClick={forgetPagePath}
+                    disabled={pageActionLoading !== null}
+                    aria-busy={pageActionLoading === "forget-page" || undefined}
+                  >
+                    {pageActionLoading === "forget-page" && <span className="ml-btn-spinner" aria-hidden="true" />}
+                    {pageActionLoading === "forget-page" ? "Removing…" : "Remove selected page from list"}
+                  </button>
                 </section>
                 <section className="ml-overflow-section">
                   <strong>Scene</strong>
                   <button className="ml-menu-action" onClick={doExport}>Export</button>
-                  <button className="ml-menu-action" onClick={() => { setImportText(""); setShowIO("import"); }}>Import</button>
+                  <button className="ml-menu-action" onClick={() => { setImportText(""); setIoError(""); setShowIO("import"); }}>Import</button>
                   <button className="ml-menu-action ml-danger" onClick={resetScene}>Reset to defaults</button>
                 </section>
               </div>
@@ -3493,11 +3747,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                     <option value="vibration">vibration</option>
                   </select>
                 </Row>
-                <SliderField label="Speed" value={g.speed} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, speed: v } }))} />
-                <SliderField label="Amplitude" value={g.amplitude} min={0} max={9999999} sliderMax={100} step={0.01} description="Motion amplitude as a fraction of the viewport's shorter side. High values create very large movement." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, amplitude: v } }))} />
-                <SliderField label="Frequency" value={g.frequency} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, frequency: v } }))} />
-                <SliderField label="Phase" value={g.phase} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, phase: v } }))} />
-                <SliderField label="Deformability" description="Controls how easily magnet targets bend a line: 0 is rigid and 1 is highly flexible." value={g.deformability} min={0} max={1} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, deformability: v } }))} />
+                <SliderField label="Speed" description="Motion cycles per second. The same value sets the base animation rate for every motion type." value={g.speed} min={0} max={9999999} sliderMax={100} step={0.001} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, speed: v } }))} />
+                <SliderField label="Amplitude" value={g.amplitude} min={0} max={9999999} sliderMax={100} step={0.001} description="Peak motion displacement as a fraction of the viewport's shorter side." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, amplitude: v } }))} />
+                <SliderField label="Frequency" value={g.frequency} min={0} max={9999999} sliderMax={100} step={0.001} disabled={g.motionType === "tension"} description={g.motionType === "tension" ? "Tension uses a single smooth bend and does not use spatial frequency." : "Spatial wave cycles along the line for Floating and Vibration."} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, frequency: v } }))} />
+                <SliderField label="Phase" value={g.phase} min={0} max={9999999} sliderMax={100} step={0.001} unit="rad" description="Starting phase offset in radians." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, phase: v } }))} />
+                <SliderField label="Magnet response" description="Scales deformation from magnetic targets only; it does not change ambient motion." value={g.deformability} min={0} max={1} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => liveUpdate((c) => ({ ...c, global: { ...c.global, deformability: v } }))} />
               </Section>
               <Section title="MAGNET" help="Pulls the line toward a registered target while that target is hovered, focused, or touched.">
                 {targetSnapshots.length === 0 && (
@@ -3517,11 +3771,14 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                   color={g.glowColor}
                   colorStyle={g.glowColorStyle}
                   colorLabel="Inner glow"
-                  onColorChange={(color) => commitDiscrete((c) => {
+                  onColorChange={(color) => liveUpdate((c) => {
                     const style = c.global.glowColorStyle ?? { type: "solid" as const, colors: [c.global.glowColor, "#5ee6ff"] };
                     return { ...c, global: { ...c.global, glowColor: color, glowColorStyle: { ...style, colors: [color, ...style.colors.slice(1)] } } };
                   })}
                   onColorStyleChange={(glowColorStyle) => commitDiscrete((c) => ({ ...c, global: { ...c.global, glowColor: glowColorStyle.colors[0] ?? c.global.glowColor, glowColorStyle } }))}
+                  onColorStyleLiveChange={(glowColorStyle) => liveUpdate((c) => ({ ...c, global: { ...c.global, glowColor: glowColorStyle.colors[0] ?? c.global.glowColor, glowColorStyle } }))}
+                  onColorChangeStart={captureBeforeChange}
+                  onColorChangeEnd={commitPending}
                   onSpeedChange={(speed) => liveUpdate((c) => {
                     const style = c.global.glowColorStyle ?? { type: "random" as const, colors: [c.global.glowColor, "#5ee6ff"] };
                     return { ...c, global: { ...c.global, glowColorStyle: { ...style, speed } } };
@@ -3553,11 +3810,14 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                   color={g.outerGlowColor}
                   colorStyle={g.outerGlowColorStyle}
                   colorLabel="Outer glow"
-                  onColorChange={(color) => commitDiscrete((c) => {
+                  onColorChange={(color) => liveUpdate((c) => {
                     const style = c.global.outerGlowColorStyle ?? { type: "solid" as const, colors: [c.global.outerGlowColor, "#5ee6ff"] };
                     return { ...c, global: { ...c.global, outerGlowColor: color, outerGlowColorStyle: { ...style, colors: [color, ...style.colors.slice(1)] } } };
                   })}
                   onColorStyleChange={(outerGlowColorStyle) => commitDiscrete((c) => ({ ...c, global: { ...c.global, outerGlowColor: outerGlowColorStyle.colors[0] ?? c.global.outerGlowColor, outerGlowColorStyle } }))}
+                  onColorStyleLiveChange={(outerGlowColorStyle) => liveUpdate((c) => ({ ...c, global: { ...c.global, outerGlowColor: outerGlowColorStyle.colors[0] ?? c.global.outerGlowColor, outerGlowColorStyle } }))}
+                  onColorChangeStart={captureBeforeChange}
+                  onColorChangeEnd={commitPending}
                   onSpeedChange={(speed) => liveUpdate((c) => {
                     const style = c.global.outerGlowColorStyle ?? { type: "random" as const, colors: [c.global.outerGlowColor, "#5ee6ff"] };
                     return { ...c, global: { ...c.global, outerGlowColorStyle: { ...style, speed } } };
@@ -3916,6 +4176,7 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
             key={previewKey}
             config={timelinePreviewConfig}
             interactive
+            animateEffectsWhenPaused={!showTemplateLibrary && selectedLine !== null}
             pauseAnimation={showTemplateLibrary || (selectedLine
               ? !timelinePreviewPlaying
               : !config.animation.playing)}
@@ -4243,8 +4504,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                               color={lineGlow.color}
                               colorStyle={lineGlow.colorStyle}
                               colorLabel="Inner glow"
-                              onColorChange={(color) => updateLineDiscrete(line.id, (current) => ({ ...current, glow: { ...current.glow, color, colorStyle: { ...(current.glow.colorStyle ?? { type: "solid" as const, colors: [current.glow.color, "#5ee6ff"] }), colors: [color, ...(current.glow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
+                              onColorChange={(color) => updateLineLive(line.id, (current) => ({ ...current, glow: { ...current.glow, color, colorStyle: { ...(current.glow.colorStyle ?? { type: "solid" as const, colors: [current.glow.color, "#5ee6ff"] }), colors: [color, ...(current.glow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
                               onColorStyleChange={(colorStyle) => updateLineDiscrete(line.id, (current) => ({ ...current, glow: { ...current.glow, color: colorStyle.colors[0] ?? current.glow.color, colorStyle } }))}
+                              onColorStyleLiveChange={(colorStyle) => updateLineLive(line.id, (current) => ({ ...current, glow: { ...current.glow, color: colorStyle.colors[0] ?? current.glow.color, colorStyle } }))}
+                              onColorChangeStart={captureBeforeChange}
+                              onColorChangeEnd={commitPending}
                               onSpeedChange={(speed) => updateLineLive(line.id, (current) => {
                                 const colorStyle = current.glow.colorStyle ?? { type: "random" as const, colors: [current.glow.color, "#5ee6ff"] };
                                 return { ...current, glow: { ...current.glow, colorStyle: { ...colorStyle, speed } } };
@@ -4868,7 +5132,21 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
               </Section>
 
               <Section title="MOTION" help="Animates the line geometry over time using the shared runtime clock.">
-                <Row label="Enabled"><input type="checkbox" checked={selectedLine.motion.enabled !== false} onChange={() => updateLineDiscrete(selectedLine.id, (line) => ({ ...line, motion: { ...line.motion, enabled: line.motion.enabled === false } }))} /></Row>
+                {selectedLine.shape.bendable === false && selectedLine.motion.enabled !== false && (
+                  <div className="ml-hint">
+                    Motion is enabled, but this rigid line cannot deform.
+                    <button type="button" className="ml-btn" onClick={() => enableLineBending(selectedLine.id)}>Enable bending</button>
+                  </div>
+                )}
+                <Row label="Enabled"><input type="checkbox" checked={selectedLine.motion.enabled !== false} onChange={() => {
+                  const enabling = selectedLine.motion.enabled === false;
+                  updateLineDiscrete(selectedLine.id, (line) => ({
+                    ...line,
+                    ...(enabling ? { shape: { ...line.shape, bendable: true } } : {}),
+                    motion: { ...line.motion, enabled: enabling },
+                  }));
+                  if (enabling) setTimelinePreviewPlaying(true);
+                }} /></Row>
                 <SliderField
                   label="Start delay"
                   description="Wait this many seconds after the line is added or its delay is changed before its motion begins. Use different delays to stagger matching lines."
@@ -4885,7 +5163,14 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                 <Row label="Preset">
                   <select className="ml-select" value="" onChange={(e) => {
                     const preset = MOTION_PRESETS[e.target.value];
-                    if (preset) updateLineDiscrete(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, ...preset } }));
+                    if (preset) {
+                      updateLineDiscrete(selectedLine.id, (line) => ({
+                        ...line,
+                        shape: { ...line.shape, bendable: true },
+                        motion: { ...line.motion, ...preset, enabled: true },
+                      }));
+                      setTimelinePreviewPlaying(true);
+                    }
                   }}>
                     <option value="">Apply preset</option>
                     {Object.keys(MOTION_PRESETS).map((name) => <option key={name} value={name}>{name}</option>)}
@@ -4898,11 +5183,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                     <option value="vibration">vibration</option>
                   </select>
                 </Row>
-                <SliderField label="Speed" value={selectedLine.motion.speed} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, speed: v } }))} />
-                <SliderField label="Amplitude" value={selectedLine.motion.amplitude} min={0} max={9999999} sliderMax={100} step={0.01} description="Motion amplitude as a fraction of the viewport's shorter side. High values create very large movement." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, amplitude: v } }))} />
-                <SliderField label="Frequency" value={selectedLine.motion.frequency} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, frequency: v } }))} />
-                <SliderField label="Phase" value={selectedLine.motion.phase} min={0} max={9999999} sliderMax={100} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, phase: v } }))} />
-                <SliderField label="Flexibility" description="Controls how easily magnet targets bend this line: 0 is rigid and 1 is highly flexible." value={selectedLine.motion.deformability} min={0} max={1} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, deformability: v } }))} />
+                <SliderField label="Speed" description="Motion cycles per second. The same value sets the base animation rate for every motion type." value={selectedLine.motion.speed} min={0} max={9999999} sliderMax={100} step={0.001} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, speed: v } }))} />
+                <SliderField label="Amplitude" value={selectedLine.motion.amplitude} min={0} max={9999999} sliderMax={100} step={0.001} description="Peak motion displacement as a fraction of the viewport's shorter side." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, amplitude: v } }))} />
+                <SliderField label="Frequency" value={selectedLine.motion.frequency} min={0} max={9999999} sliderMax={100} step={0.001} disabled={selectedLine.motion.type === "tension"} description={selectedLine.motion.type === "tension" ? "Tension uses a single smooth bend and does not use spatial frequency." : "Spatial wave cycles along the line for Floating and Vibration."} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, frequency: v } }))} />
+                <SliderField label="Phase" value={selectedLine.motion.phase} min={0} max={9999999} sliderMax={100} step={0.001} unit="rad" description="Starting phase offset in radians." onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, phase: v } }))} />
+                <SliderField label="Magnet response" description="Scales deformation from magnetic targets only; it does not change ambient motion." value={selectedLine.motion.deformability} min={0} max={1} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, motion: { ...l.motion, deformability: v } }))} />
               </Section>
 
               <Section title="MAGNET" open={magnetSectionExpanded} onOpenChange={setMagnetSectionExpanded} help="Pulls the line toward a registered target while that target is hovered, focused, or touched.">
@@ -4925,8 +5210,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                   color={selectedLine.glow.color}
                   colorStyle={selectedLine.glow.colorStyle}
                   colorLabel="Inner glow"
-                  onColorChange={(color) => updateLineDiscrete(selectedLine.id, (line) => ({ ...line, glow: { ...line.glow, color, colorStyle: { ...(line.glow.colorStyle ?? { type: "solid" as const, colors: [line.glow.color, "#5ee6ff"] }), colors: [color, ...(line.glow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
+                  onColorChange={(color) => updateLineLive(selectedLine.id, (line) => ({ ...line, glow: { ...line.glow, color, colorStyle: { ...(line.glow.colorStyle ?? { type: "solid" as const, colors: [line.glow.color, "#5ee6ff"] }), colors: [color, ...(line.glow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
                   onColorStyleChange={(colorStyle) => updateLineDiscrete(selectedLine.id, (line) => ({ ...line, glow: { ...line.glow, color: colorStyle.colors[0] ?? line.glow.color, colorStyle } }))}
+                  onColorStyleLiveChange={(colorStyle) => updateLineLive(selectedLine.id, (line) => ({ ...line, glow: { ...line.glow, color: colorStyle.colors[0] ?? line.glow.color, colorStyle } }))}
+                  onColorChangeStart={captureBeforeChange}
+                  onColorChangeEnd={commitPending}
                   onSpeedChange={(speed) => updateLineLive(selectedLine.id, (line) => {
                     const style = line.glow.colorStyle ?? { type: "random" as const, colors: [line.glow.color, "#5ee6ff"] };
                     return { ...line, glow: { ...line.glow, colorStyle: { ...style, speed } } };
@@ -4955,8 +5243,11 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
                   color={selectedLine.outerGlow.color}
                   colorStyle={selectedLine.outerGlow.colorStyle}
                   colorLabel="Outer glow"
-                  onColorChange={(color) => updateLineDiscrete(selectedLine.id, (line) => ({ ...line, outerGlow: { ...line.outerGlow, color, colorStyle: { ...(line.outerGlow.colorStyle ?? { type: "solid" as const, colors: [line.outerGlow.color, "#5ee6ff"] }), colors: [color, ...(line.outerGlow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
+                  onColorChange={(color) => updateLineLive(selectedLine.id, (line) => ({ ...line, outerGlow: { ...line.outerGlow, color, colorStyle: { ...(line.outerGlow.colorStyle ?? { type: "solid" as const, colors: [line.outerGlow.color, "#5ee6ff"] }), colors: [color, ...(line.outerGlow.colorStyle?.colors.slice(1) ?? ["#5ee6ff"])] } } }))}
                   onColorStyleChange={(colorStyle) => updateLineDiscrete(selectedLine.id, (line) => ({ ...line, outerGlow: { ...line.outerGlow, color: colorStyle.colors[0] ?? line.outerGlow.color, colorStyle } }))}
+                  onColorStyleLiveChange={(colorStyle) => updateLineLive(selectedLine.id, (line) => ({ ...line, outerGlow: { ...line.outerGlow, color: colorStyle.colors[0] ?? line.outerGlow.color, colorStyle } }))}
+                  onColorChangeStart={captureBeforeChange}
+                  onColorChangeEnd={commitPending}
                   onSpeedChange={(speed) => updateLineLive(selectedLine.id, (line) => {
                     const style = line.outerGlow.colorStyle ?? { type: "random" as const, colors: [line.outerGlow.color, "#5ee6ff"] };
                     return { ...line, outerGlow: { ...line.outerGlow, colorStyle: { ...style, speed } } };
@@ -4977,7 +5268,21 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
               </Section>
 
               <Section title="CURSOR INFLUENCE" defaultOpen={false} help="Deforms the line around the cursor. Soft spreads influence more gently across the radius; focused concentrates it near the cursor; Follow controls how quickly the line catches up.">
-                <Row label="Enabled"><input type="checkbox" checked={selectedLine.cursorInfluence.enabled} onChange={() => updateLineDiscrete(selectedLine.id, (l) => ({ ...l, cursorInfluence: { ...l.cursorInfluence, enabled: !l.cursorInfluence.enabled } }))} /></Row>
+                {selectedLine.shape.bendable === false && selectedLine.cursorInfluence.enabled && (
+                  <div className="ml-hint">
+                    Cursor influence is enabled, but this rigid line cannot deform.
+                    <button type="button" className="ml-btn" onClick={() => enableLineBending(selectedLine.id)}>Enable bending</button>
+                  </div>
+                )}
+                <Row label="Enabled"><input type="checkbox" checked={selectedLine.cursorInfluence.enabled} onChange={() => {
+                  const enabling = !selectedLine.cursorInfluence.enabled;
+                  updateLineDiscrete(selectedLine.id, (line) => ({
+                    ...line,
+                    ...(enabling ? { shape: { ...line.shape, bendable: true } } : {}),
+                    cursorInfluence: { ...line.cursorInfluence, enabled: !line.cursorInfluence.enabled },
+                  }));
+                  if (enabling) setTimelinePreviewPlaying(true);
+                }} /></Row>
                 <Row label="Response"><select className="ml-select" value={selectedLine.cursorInfluence.profile} onChange={(e) => updateLineDiscrete(selectedLine.id, (l) => ({ ...l, cursorInfluence: { ...l.cursorInfluence, profile: e.target.value as "soft" | "balanced" | "focused" } }))}><option value="soft">soft</option><option value="balanced">balanced</option><option value="focused">focused</option></select></Row>
                 <SliderField label="Follow" description="How quickly the line catches up to the cursor. Lower values feel snappy; higher values feel smoother and more floaty." value={selectedLine.cursorInfluence.smoothing} min={0} max={1} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, cursorInfluence: { ...l.cursorInfluence, smoothing: v } }))} />
                 <SliderField label="Strength" description="Multiplier for cursor movement. Values above 1 reach the deformation limit sooner; Max Deform still caps the offset." value={selectedLine.cursorInfluence.strength} min={0} max={2} step={0.01} onCommitStart={captureBeforeChange} onCommitEnd={commitPending} onLive={(v) => updateLineLive(selectedLine.id, (l) => ({ ...l, cursorInfluence: { ...l.cursorInfluence, strength: v } }))} />
@@ -5534,7 +5839,8 @@ export function MagneticLinesEditor({ initialConfig, onChange }: MagneticLinesEd
               <strong>{showIO === "export" ? "Export Configuration" : "Import Configuration"}</strong>
               <button className="ml-btn" onClick={() => setShowIO(null)} aria-label="Close">×</button>
             </div>
-            <textarea className="ml-textarea" value={importText} onChange={(e) => setImportText(e.target.value)} spellCheck={false} />
+            <textarea className="ml-textarea" value={importText} onChange={(e) => { setImportText(e.target.value); setIoError(""); }} spellCheck={false} />
+            {ioError && <p className="ml-error" role="alert">{ioError}</p>}
             <div className="ml-modal-actions">
               {showIO === "export" ? (
                 <>
@@ -5576,6 +5882,9 @@ const EDITOR_CSS = `
 .ml-btn { background: #1c1e26; color: #d7dbe3; border: 1px solid #2a2c36; border-radius: 6px; padding: 5px 9px; font-size: 11px; cursor: pointer; }
 .ml-btn:hover { background: #262933; }
 .ml-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ml-btn[aria-busy="true"] { opacity: 0.9; cursor: progress; }
+.ml-btn-spinner { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -1px; animation: ml-btn-spin .7s linear infinite; }
+@keyframes ml-btn-spin { to { transform: rotate(360deg); } }
 .ml-primary { background: #b7f4ff; border-color: #b7f4ff; color: #081015; font-weight: 650; }
 .ml-primary:hover { background: #d4f9ff; }
 .ml-overflow-menu { position: relative; z-index: 20; }
@@ -5594,6 +5903,10 @@ const EDITOR_CSS = `
 @media (max-width: 900px) { .ml-cursor-mode { overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #687386 #171a22; touch-action: pan-y; } .ml-cursor-mode > .cursor-effects-settings { height: auto; min-height: 100%; } }
 .ml-menu-action { width: 100%; padding: 6px; border: 0; border-radius: 4px; background: transparent; color: #d7dbe3; text-align: left; font-size: 11px; cursor: pointer; }
 .ml-menu-action:hover { background: #252934; }
+.ml-menu-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.ml-menu-action[aria-busy="true"] { opacity: 0.9; cursor: progress; }
+.ml-menu-action .ml-btn-spinner { margin-right: 7px; }
+.ml-page-save-status { min-height: 11px; }
 .ml-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #c7cbd6; font-size: 11px; }
 .ml-menu-pair { display: flex; gap: 6px; }
 .ml-menu-pair > .ml-btn { flex: 1; }

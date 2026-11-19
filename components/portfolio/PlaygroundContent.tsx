@@ -29,7 +29,7 @@ const columns: Piece[][] = [
 export default function PlaygroundRoute() {
   return (
     <SiteShell activePage="playground">
-      <section className="gutter flex flex-col gap-8 pt-8 pb-12 md:gap-11 md:pt-16">
+      <section className="page-entry gutter flex flex-col gap-8 pt-8 pb-12 md:gap-11 md:pt-16">
         <SectionLabel>PLAYGROUND / OFF THE CLOCK</SectionLabel>
         <div className="flex flex-col gap-7">
           <div className="flex flex-wrap items-center justify-between gap-6">
@@ -54,7 +54,7 @@ export default function PlaygroundRoute() {
         </div>
       </section>
 
-      <section className="gutter flex flex-col gap-8 pb-18">
+      <section className="page-entry page-entry--1 gutter flex flex-col gap-8 pb-18">
         <div className="border-t border-line pt-5 text-xs font-bold tracking-[1px] text-muted">
           A LITTLE BIT OF EVERYTHING
         </div>

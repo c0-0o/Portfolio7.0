@@ -15,7 +15,7 @@ require.extensions[".ts"] = (module, filename) => {
   module._compile(output, filename);
 };
 
-const { createGeneratedShapePath } = require("../lib/magnetic-lines/editor/shapePresets.ts");
+const { createGeneratedShapePath } = require("../lib/magnetic-lines/shapePresets.ts");
 const { getEvenlySpacedColors } = require("../lib/magnetic-lines/colorWeights.ts");
 const { RAINBOW_COLORS } = require("../lib/magnetic-lines/types.ts");
 const { computeLine, createLineRuntimeState, pathSegmentsFromResult, SAMPLES } = require("../lib/magnetic-lines/engine/lineEngine.ts");

@@ -76,7 +76,6 @@ export class IntroController {
     this.dead = true;
     removeEventListener("keydown", this.onKey);
     if (this.o.replayButton) this.o.replayButton.onclick = null;
-    this.cancelAnimations();
     this.setActive(false);
   }
 
@@ -129,6 +128,7 @@ export class IntroController {
     intro?.toggleAttribute("data-active", active);
     intro?.toggleAttribute("data-opening", active);
     document.documentElement.classList.toggle("lock", active);
+    if (!active) this.cancelAnimations();
   }
 
   /** Repeat visitor / no intro: show the page straight away (the hero still plays its own tile entrance). */

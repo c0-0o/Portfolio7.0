@@ -37,7 +37,7 @@ export function useMagneticTarget<T extends Element>(options: UseMagneticTargetO
 
 export interface MagneticTargetProps extends UseMagneticTargetOptions {
   children: ReactNode;
-  /** Wrapper element type. Defaults to "span" with display:contents so it never affects layout. */
+  /** Wrapper element type. Defaults to a measurable inline-block span. */
   as?: ElementType;
 }
 

@@ -1,4 +1,4 @@
-import type { GeneratedShapePreset, MagneticLineConfig, PathPoint, Point } from "../types";
+import type { GeneratedShapePreset, MagneticLineConfig, PathPoint, Point } from "./types";
 
 export const GENERATED_SHAPE_PRESETS = [
   "triangle",

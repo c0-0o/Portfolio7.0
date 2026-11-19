@@ -53,6 +53,35 @@ export function createLineRuntimeState(): LineRuntimeState {
   };
 }
 
+export function hasActiveInteractionFrame(
+  pointerActive: boolean,
+  states: Iterable<LineRuntimeState>,
+): boolean {
+  if (pointerActive) return true;
+  for (const state of states) {
+    if (
+      state.glowIntensity.some((intensity) => intensity > 0.001) ||
+      state.outerGlowIntensity.some((intensity) => intensity > 0.001) ||
+      state.cursorOffset.some((offset) => Math.hypot(offset.x, offset.y) > 0.05)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function shouldScheduleAnimationFrame(
+  animationPaused: boolean,
+  animateEffectsWhenPaused: boolean,
+  hasAnimatedEffects: boolean,
+  pointerActive: boolean,
+  states: Iterable<LineRuntimeState>,
+): boolean {
+  return !animationPaused ||
+    (animateEffectsWhenPaused && hasAnimatedEffects) ||
+    hasActiveInteractionFrame(pointerActive, states);
+}
+
 export interface PointerState {
   x: number;
   y: number;
@@ -503,6 +532,19 @@ function getCustomPathViewportTransform(
     return null;
   }
 
+  if (config.customPath.aspectRatioMode === "artboard") {
+    const frameWidth = Math.min(viewport.width, viewport.height * sourceAspect);
+    const frameHeight = frameWidth / sourceAspect;
+    return {
+      center: { x: 0, y: 0 },
+      scaleX: frameWidth / viewport.width,
+      scaleY: frameHeight / viewport.height,
+      fitScale: 1,
+      offsetX: (viewport.width - frameWidth) / 2,
+      offsetY: config.customPath.aspectRatioAlignY === "bottom" ? viewport.height - frameHeight : 0,
+    };
+  }
+
   const scaleX = Math.sqrt(sourceAspect / viewportAspect);
   const scaleY = 1 / scaleX;
   const pixels = config.customPath.points.map((point) => ({
@@ -826,23 +868,21 @@ export function computeLine(
       const shapeDeform = bendable ? shapeOffset(shape, s, minDim) : 0;
 
       let offset = 0;
+      const temporalPhase = motionTime * motion.speed * Math.PI * 2 + motion.phase;
+      const spatialPhase = s * motion.frequency * Math.PI * 2;
       if (bendable && motion.enabled !== false && motion.type === "tension") {
         const envelope = Math.sin(Math.PI * s);
-        offset = amplitudePx * envelope * Math.sin(motionTime * motion.speed * Math.PI * 2 + motion.phase);
+        offset = amplitudePx * envelope * Math.sin(temporalPhase);
       } else if (bendable && motion.enabled !== false && motion.type === "floating") {
         const envelope = 0.35 + 0.65 * Math.sin(Math.PI * s);
         offset =
           amplitudePx *
           envelope *
-          (Math.sin(motionTime * motion.speed * Math.PI * 0.6 + motion.phase + s * motion.frequency * 2) * 0.7 +
-            Math.sin(motionTime * motion.speed * Math.PI * 0.23 + motion.phase * 1.7) * 0.3);
+          (Math.sin(temporalPhase + spatialPhase) * 0.7 +
+            Math.sin(temporalPhase * 2 - spatialPhase * 0.5) * 0.3);
       } else if (bendable && motion.enabled !== false) {
         const envelope = Math.sin(Math.PI * s);
-        offset =
-          amplitudePx *
-          0.35 *
-          envelope *
-          Math.sin(motionTime * motion.speed * Math.PI * 2 * (3 + motion.frequency) + motion.phase + s * 14);
+        offset = amplitudePx * envelope * Math.sin(temporalPhase + spatialPhase);
       }
 
       const totalOffset = (shape.type === "straight" && !customPathActive ? 0 : shapeDeform) + offset;
@@ -1067,10 +1107,13 @@ export function computeLine(
       const distanceInfluence = falloff(distanceToPointer, radiusPx, cursorConfig.falloff);
       const profileExponent = cursorConfig.profile === "soft" ? 0.5 : cursorConfig.profile === "focused" ? 2 : 1;
       const normalPull = dx * localNormal.x + dy * localNormal.y;
-      if (distanceInfluence <= 0 || Math.abs(normalPull) <= 0.0001) continue;
+      const normalDirection = Math.abs(normalPull) <= 0.0001
+        ? cursorConfig.mode === "repel" ? 1 : 0
+        : Math.sign(normalPull);
+      if (distanceInfluence <= 0 || normalDirection === 0) continue;
       const influence = Math.min(1, Math.pow(distanceInfluence, profileExponent) * Math.max(0, cursorConfig.strength) * materialResponse) *
         sampleEndpointEnvelopes[i];
-      const displacement = maxDeformPx * influence * Math.sign(normalPull) * direction;
+      const displacement = maxDeformPx * influence * normalDirection * direction;
       const offsetX = localNormal.x * displacement;
       const offsetY = localNormal.y * displacement;
       cursorDesired[i] = { x: offsetX, y: offsetY };
@@ -1149,9 +1192,13 @@ export function computeLine(
   const attackFactor = 1 - Math.exp(-dt / lerp(0.05, 0.6, smoothing));
   const releaseFactor = 1 - Math.exp(-dt / lerp(0.8, 0.05, scene.cursor.releaseSpeed));
   const maxCombinedGlow = clamp01(scene.global.glowMaxCombinedIntensity / 100);
-  for (let i = 0; i < sampleCount; i++) {
-    const glowValue = Math.min(maxCombinedGlow, targetGlow[i]);
-    state.glowIntensity[i] = lerp(state.glowIntensity[i], glowValue, glowValue < state.glowIntensity[i] ? releaseFactor : attackFactor);
+  if (!config.glow.enabled) {
+    state.glowIntensity.fill(0);
+  } else {
+    for (let i = 0; i < sampleCount; i++) {
+      const glowValue = Math.min(maxCombinedGlow, targetGlow[i]);
+      state.glowIntensity[i] = lerp(state.glowIntensity[i], glowValue, glowValue < state.glowIntensity[i] ? releaseFactor : attackFactor);
+    }
   }
 
   // ---- 6. Final geometry ----

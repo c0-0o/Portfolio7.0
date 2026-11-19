@@ -1,6 +1,7 @@
 import type { CustomPath, MagneticLinesSceneConfig, ShapeConfig } from "./types";
 import { DEFAULT_SCENE } from "./defaultScene";
-import { sanitizeLine, sanitizeSceneConfig } from "./editor/validate";
+import { sanitizeLine, sanitizeSceneConfig } from "./sceneValidation";
+import { replaceProjectPageScenes } from "./projectPageScenes";
 
 export const SCENE_STORAGE_KEY = "magnetic-lines-scene:v1";
 export const SCENE_CHANGE_EVENT = "magnetic-lines-scene-change";
@@ -8,7 +9,27 @@ export const PAGE_SCENES_STORAGE_KEY = "magnetic-lines-page-scenes:v1";
 export const PAGE_REGISTRY_STORAGE_KEY = "magnetic-lines-pages:v1";
 export const PAGE_PREVIEW_STORAGE_KEY = "magnetic-lines-page-preview:v1";
 
-const BUILT_IN_PAGE_PATHS = ["/", "/about", "/opening", "/projects", "/playground", "/work/em-collection"];
+export const BUILT_IN_PAGE_PATHS = [
+  "/",
+  "/about",
+  "/opening",
+  "/playground",
+  "/under-construction",
+  "/not-found",
+  "/work/em-collection",
+];
+const pageSceneMutationQueues = new Map<string, Promise<void>>();
+
+function enqueuePageSceneMutation<T>(path: string, mutation: () => Promise<T>): Promise<T> {
+  const previous = pageSceneMutationQueues.get(path) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(mutation);
+  const settled = current.then(() => undefined, () => undefined);
+  pageSceneMutationQueues.set(path, settled);
+  void settled.then(() => {
+    if (pageSceneMutationQueues.get(path) === settled) pageSceneMutationQueues.delete(path);
+  });
+  return current;
+}
 
 export function loadPersistedScene(): MagneticLinesSceneConfig {
   if (typeof window === "undefined") return DEFAULT_SCENE;
@@ -99,17 +120,89 @@ export function registerMagneticPagePath(path: string): void {
   }
 }
 
-export function removeMagneticPagePath(path: string): boolean {
+export async function removeMagneticPagePath(path: string): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const normalizedPath = normalizeMagneticPagePath(path);
   if (!normalizedPath || BUILT_IN_PAGE_PATHS.includes(normalizedPath)) return false;
+  if (!await removePersistedPageScene(normalizedPath)) return false;
   try {
     window.localStorage.setItem(PAGE_REGISTRY_STORAGE_KEY, JSON.stringify(readPageRegistry().filter((item) => item !== normalizedPath)));
     window.dispatchEvent(new Event(SCENE_CHANGE_EVENT));
-    return removePersistedPageScene(normalizedPath);
+    return true;
   } catch {
     return false;
   }
+}
+
+async function requestProjectScenes(): Promise<{
+  scenes: Record<string, unknown>;
+  exists: boolean;
+  needsLegacyImport: boolean;
+}> {
+  const response = await fetch("/api/magnetic-page-scenes", { cache: "no-store" });
+  if (!response.ok) throw new Error(`Project scene loading returned ${response.status}.`);
+  const value: unknown = await response.json();
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("scenes" in value) ||
+    !value.scenes ||
+    typeof value.scenes !== "object" ||
+    Array.isArray(value.scenes) ||
+    !("exists" in value) ||
+    typeof value.exists !== "boolean" ||
+    !("needsLegacyImport" in value) ||
+    typeof value.needsLegacyImport !== "boolean"
+  ) {
+    throw new Error("Project scene loading returned invalid data.");
+  }
+  return {
+    scenes: value.scenes as Record<string, unknown>,
+    exists: value.exists,
+    needsLegacyImport: value.needsLegacyImport,
+  };
+}
+
+async function writeProjectPageScene(path: string, scene: MagneticLinesSceneConfig): Promise<boolean> {
+  try {
+    const response = await fetch("/api/magnetic-page-scenes", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, scene: sanitizeSceneConfig(scene) }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error(`Could not write the ${path} background to project files.`, error);
+    return false;
+  }
+}
+
+function cacheProjectScenes(scenes: Record<string, unknown>): void {
+  replaceProjectPageScenes(scenes);
+  try {
+    window.localStorage.setItem(PAGE_SCENES_STORAGE_KEY, JSON.stringify(scenes));
+  } catch (error) {
+    console.error("Could not cache the project magnetic-scene data in this browser.", error);
+  }
+  window.dispatchEvent(new Event(SCENE_CHANGE_EVENT));
+}
+
+export async function syncPersistedPageScenesFromProject(): Promise<void> {
+  let project = await requestProjectScenes();
+  if (project.needsLegacyImport && process.env.NODE_ENV !== "production") {
+    const cachedScenes = readPageScenes() ?? {};
+    const response = await fetch("/api/magnetic-page-scenes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenes: cachedScenes }),
+    });
+    if (!response.ok) throw new Error(`Legacy project scene migration returned ${response.status}.`);
+    project = await requestProjectScenes();
+    if (project.needsLegacyImport) {
+      throw new Error("Project scene migration did not complete.");
+    }
+  }
+  cacheProjectScenes(project.scenes);
 }
 
 export function loadPersistedPageScene(path: string): MagneticLinesSceneConfig | null {
@@ -172,34 +265,42 @@ export function removePageScenePreview(token: string): void {
   }
 }
 
-export function savePersistedPageScene(path: string, scene: MagneticLinesSceneConfig): boolean {
+export async function savePersistedPageScene(path: string, scene: MagneticLinesSceneConfig): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const normalizedPath = normalizeMagneticPagePath(path);
-  const scenes = readPageScenes();
-  if (!normalizedPath || !scenes) return false;
-  try {
-    scenes[normalizedPath] = sanitizeSceneConfig(scene);
-    window.localStorage.setItem(PAGE_SCENES_STORAGE_KEY, JSON.stringify(scenes));
-    window.dispatchEvent(new Event(SCENE_CHANGE_EVENT));
+  if (!normalizedPath || normalizedPath === "/editor") return false;
+  const safeScene = sanitizeSceneConfig(scene);
+  return enqueuePageSceneMutation(normalizedPath, async () => {
+    if (!await writeProjectPageScene(normalizedPath, safeScene)) return false;
+    const scenes = readPageScenes() ?? {};
+    scenes[normalizedPath] = safeScene;
+    cacheProjectScenes(scenes);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
-export function removePersistedPageScene(path: string): boolean {
+export async function removePersistedPageScene(path: string): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const normalizedPath = normalizeMagneticPagePath(path);
-  const scenes = readPageScenes();
-  if (!normalizedPath || !scenes) return false;
-  try {
+  if (!normalizedPath || normalizedPath === "/editor") return false;
+  return enqueuePageSceneMutation(normalizedPath, async () => {
+    let response: Response;
+    try {
+      response = await fetch("/api/magnetic-page-scenes", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: normalizedPath }),
+      });
+    } catch (error) {
+      console.error(`Could not remove the ${normalizedPath} background from project files.`, error);
+      return false;
+    }
+    if (!response.ok) return false;
+    const scenes = readPageScenes() ?? {};
     delete scenes[normalizedPath];
-    window.localStorage.setItem(PAGE_SCENES_STORAGE_KEY, JSON.stringify(scenes));
-    window.dispatchEvent(new Event(SCENE_CHANGE_EVENT));
+    cacheProjectScenes(scenes);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 export const TEMPLATE_STORAGE_KEY = "magnetic-lines-templates:v1";

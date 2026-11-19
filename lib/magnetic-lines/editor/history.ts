@@ -34,8 +34,13 @@ export function useHistory<T>(limit = 100) {
     return next;
   }, []);
 
+  const clear = useCallback(() => {
+    past.current = [];
+    future.current = [];
+  }, []);
+
   const canUndo = () => past.current.length > 0;
   const canRedo = () => future.current.length > 0;
 
-  return { commit, undo, redo, canUndo, canRedo };
+  return { commit, undo, redo, clear, canUndo, canRedo };
 }

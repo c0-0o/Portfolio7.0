@@ -190,12 +190,12 @@ export const DEFAULT_ANCHOR_MOTION: {
 };
 
 export const MOTION_PRESETS: Record<string, Partial<MotionConfig>> = {
-  Taut: { type: "tension", speed: 0.12, amplitude: 0.012, frequency: 1, deformability: 0.35 },
-  "Soft Tension": { type: "tension", speed: 0.2, amplitude: 0.022, frequency: 1, deformability: 0.55 },
-  "Slow Floating": { type: "floating", speed: 0.15, amplitude: 0.03, frequency: 1.2, deformability: 0.7 },
-  "Deep Floating": { type: "floating", speed: 0.08, amplitude: 0.05, frequency: 0.8, deformability: 0.85 },
-  "Fine Vibration": { type: "vibration", speed: 0.6, amplitude: 0.01, frequency: 1.5, deformability: 0.4 },
-  "Soft Vibration": { type: "vibration", speed: 0.35, amplitude: 0.016, frequency: 1, deformability: 0.5 },
+  Taut: { type: "tension", speed: 0.12, amplitude: 0.012, frequency: 1 },
+  "Soft Tension": { type: "tension", speed: 0.2, amplitude: 0.022, frequency: 1 },
+  "Slow Floating": { type: "floating", speed: 0.15, amplitude: 0.03, frequency: 1.2 },
+  "Deep Floating": { type: "floating", speed: 0.08, amplitude: 0.05, frequency: 0.8 },
+  "Fine Vibration": { type: "vibration", speed: 0.6, amplitude: 0.01, frequency: 1.5 },
+  "Soft Vibration": { type: "vibration", speed: 0.35, amplitude: 0.016, frequency: 1 },
 };
 
 const STARTER_MOTION_INHERITANCE: MagneticLineConfig["inherit"] = {

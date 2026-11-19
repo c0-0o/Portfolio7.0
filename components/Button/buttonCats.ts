@@ -21,16 +21,15 @@ const EP=(y:number,a:string,b?:string)=>`<g transform="translate(22 ${y})">${a}<
 const NZ='<path d="M32 31l3 3.2 3-3.2Z" fill=#3b4533 />';
 const EARS='<path d="M8 12L21 17L8 29Z" fill=#1f261a /><path d="M62 12L49 17L62 29Z" fill=#1f261a />';
 /** body hidden behind the button: shows (complete, not cut off) when the button is squished */
-const BD=(_x=52,_w=86)=>''; // no visible body: the cat rides the button surface instead
+const BD=()=>''; // no visible body: the cat rides the button surface instead
 const O=EP(26,E())+NZ,WIDE=EP(26,'<circle r=7.5 fill=#CBEF92 /><circle r=2.4 cy=.5 fill=#050604 />')+NZ;
-const HP='<path class=mbc-l d="M16 28l6-5 6 5M42 28l6-5 6 5"/>'+NZ,SL='<path class=mbc-l d="M15 22l8 4-8 4M55 22l-8 4 8 4"/>',SL2='<path class=mbc-l d="M14 18l8 4-8 4M56 18l-8 4 8 4"/>';
+const HP='<path class=mbc-l d="M16 28l6-5 6 5M42 28l6-5 6 5"/>'+NZ,SL2='<path class=mbc-l d="M14 18l8 4-8 4M56 18l-8 4 8 4"/>';
 const HD='<path class=mbc-k d="M3 60L3 44L5 6Q6 2 10 4L26 14Q35 12 44 14L60 4Q64 2 65 6L67 44L67 60Z"/>';
 const IN=(c:string)=>`<g class=mbc-in>${c}</g>`;
 const H=(e:string,x=60,y=56,x2='',body='')=>`<g class=mbc-in>${body}<g transform="translate(${x} ${y})"><g class=mbc-h>${HD}${EARS}${e}${x2}</g></g></g>`;
 const SP='<g class=mbc-sp><path d="M132 58l5-4M134 66l7-2"/></g>';
 const AR='<g class=mbc-sp><path d="M52 74q-5 4-1 10M46 72q-6 6-1 14M138 74q5 4 1 10M144 72q6 6 1 14"/></g>';
 const PW='<g class=mbc-pa><ellipse class=mbc-k cx=62 cy=88 rx=8 ry=6 /><ellipse class=mbc-k cx=128 cy=88 rx=8 ry=6 /></g>';
-const TAIL='<g class=mbc-in><g class=mbc-tw><path class=mbc-tp d="M150 100V78Q150 60 134 60Q125 60 126 68"/></g></g>';
 const PAW='<g class=mbc-pw><ellipse class=mbc-k cx=62 cy=34 rx=8 ry=7.5 stroke=#ADEB66 stroke-width=1.2 /></g>';
 const PP='<g class="mbc-pp mbc-k" transform="translate(142 52)"><ellipse cy=4 rx=4 ry=3.4 /><circle cx=-5 cy=-2 r=1.7 /><circle cx=-1.7 cy=-5 r=1.7 /><circle cx=1.7 cy=-5 r=1.7 /><circle cx=5 cy=-2 r=1.7 /></g>';
 const EA='<path d="M10 17L30 26Q28 33 19 33Q10 29 10 17Z" fill=#E3F7C0 /><circle cx=20 cy=27 r=3 fill=#050604 /><path d="M60 17L40 26Q42 33 51 33Q60 29 60 17Z" fill=#E3F7C0 /><circle cx=50 cy=27 r=3 fill=#050604 />';
@@ -48,7 +47,7 @@ const V:Record<CatKey,CatDef>={
  popup:{name:'Cat Pop Up (eyes follow cursor)',render:()=>H(O,60,52,'',BD())+IN(SP)},
  peek:{name:'Peek & Hide (hover: tries to catch cursor, click: surprised)',render:()=>IN(PW+ARMS)+H(O,60,70,'',BD())},
  eyes:{name:'Cat Eyes, then pops up (hover: hunting pupils + pounce wiggle)',render:()=>`<g class=mbc-ey><g transform="translate(82 76) scale(1.25)">${E()}</g><g transform="translate(108 76) scale(1.25)">${E()}</g></g>`+H(O,60,52,'',BD())+IN(SP)},
- walk:{name:'Cat Side Peek (runs from the cursor)',render:(W:number)=>{const x=95-W/2+4;return `<g class=mbc-run><g class=mbc-flip style="transform-origin:${x+35}px 80px">`+H(O,x,62,'',BD(x-8,86))+`<g class=mbc-in><ellipse class=mbc-k cx=${x+62} cy=89 rx=8 ry=6 stroke=#ADEB66 stroke-width=1.2 /></g><g class=mbc-in><g class=mbc-sp><path d="M${x-6} 74q-5 4-1 10M${x-12} 72q-6 6-1 14"/></g></g></g></g>`}},
+ walk:{name:'Cat Side Peek (runs from the cursor)',render:(W:number)=>{const x=95-W/2+4;return `<g class=mbc-run><g class=mbc-flip style="transform-origin:${x+35}px 80px">`+H(O,x,62,'',BD())+`<g class=mbc-in><ellipse class=mbc-k cx=${x+62} cy=89 rx=8 ry=6 stroke=#ADEB66 stroke-width=1.2 /></g><g class=mbc-in><g class=mbc-sp><path d="M${x-6} 74q-5 4-1 10M${x-12} 72q-6 6-1 14"/></g></g></g></g>`}},
  bounce:{name:'Cat Head Bounce (hover: bounces faster + hearts)',render:()=>H(HP,60,52,'',BD())+IN(AR+HEARTS)},
  paw:{name:'Playful Paw (hover: watches + slaps the cursor)',render:()=>CP('mbc-slap')+H(O,60,52,PAW,BD())+IN(PP)},
  sleep:{name:'Cat Sleep (hover: disturbed ~ ~, click: angry scratch)',render:()=>IN(LOAF+'<ellipse class=mbc-k cx=36 cy=90 rx=10 ry=6.5 stroke=#ADEB66 stroke-width=1 /><ellipse class=mbc-k cx=154 cy=90 rx=10 ry=6.5 stroke=#ADEB66 stroke-width=1 /><g class=mbc-tw style="transform-origin:160px 92px"><path class=mbc-tp style="stroke-width:7" d="M160 90Q184 92 182 72Q180 58 166 63"/></g><text class=mbc-z x=122 y=62>z</text><text class=mbc-z style="animation-delay:1s" x=132 y=50>Z</text>')+H(SLEEP_E,50,62)},
@@ -67,7 +66,7 @@ export const catFocus = (key: CatKey, w: number) => ({
 /** how far the side-peek cat travels when it runs to the other side */
 export const runDistance = (w: number) => Math.max(0, w - 78);
 /** static clip (used by the SVG exports): only what is above the button's top edge */
-export const catClipPath = (_w: number) => `path("M -400 -300 H 600 V 91 H -400 Z")`;
+export const catClipPath: (width: number) => string = () => `path("M -400 -300 H 600 V 91 H -400 Z")`;
 export const SCRATCH_OVERLAY = SCR;
 export const loadingCatMarkup = LD;
 

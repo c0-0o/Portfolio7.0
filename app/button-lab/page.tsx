@@ -111,7 +111,7 @@ export default function ButtonLabPage() {
           </header>
 
           <div className={styles.assetGrid}>
-            {catPreviews.map((preview) => (
+            {catPreviews.map((preview, index) => (
               <figure className={styles.asset} key={preview.slug}>
                 <div className={styles.artwork}>
                   <Image
@@ -121,7 +121,7 @@ export default function ButtonLabPage() {
                     height={withButton ? preview.mockupHeight : preview.height}
                     className={styles.artImage}
                     unoptimized
-                    loading="lazy"
+                    loading={index === 0 ? "eager" : "lazy"}
                   />
                 </div>
                 <figcaption>

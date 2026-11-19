@@ -53,9 +53,11 @@ export function Tag({
 export function SiteShell({
   children,
   activePage = "home",
+  showContactSection = true,
 }: {
   children: ReactNode;
   activePage?: SitePage;
+  showContactSection?: boolean;
 }) {
   return (
     <div id="top" className="builder-portfolio min-h-screen">
@@ -63,7 +65,7 @@ export function SiteShell({
         <SiteNav activePage={activePage} />
       </div>
       <main>{children}</main>
-      <ContactAndFooter />
+      <ContactAndFooter showContactSection={showContactSection} />
     </div>
   );
 }

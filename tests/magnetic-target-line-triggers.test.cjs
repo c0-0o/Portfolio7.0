@@ -16,7 +16,7 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const { DEFAULT_SCENE } = require("../lib/magnetic-lines/defaultScene.ts");
-const { sanitizeSceneConfig } = require("../lib/magnetic-lines/editor/validate.ts");
+const { sanitizeSceneConfig } = require("../lib/magnetic-lines/sceneValidation.ts");
 const {
   getTargetLineActivations,
   getTargetRegisteredActivations,
