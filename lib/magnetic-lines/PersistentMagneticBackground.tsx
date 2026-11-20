@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { loadPageScenePreview, loadPersistedPageScene, normalizeMagneticPagePath, registerMagneticPagePath, savePersistedPageScene, SCENE_CHANGE_EVENT, syncPersistedPageScenesFromProject } from "./persistence";
 import { DEFAULT_SCENE } from "./defaultScene";
-import { getSceneTemplateById } from "./sceneTemplates";
 import { getProjectPageScene } from "./projectPageScenes";
 import { MagneticBackgroundLines } from "./MagneticBackgroundLines";
 import { MagneticTargetPicker } from "./MagneticTargetPicker";
@@ -462,12 +461,6 @@ const HOME_BACKGROUND_LIGHTS = [
 ];
 
 export function getPortfolioDefaultScene(path: string): MagneticLinesSceneConfig {
-  if (path === "/opening") {
-    const openingTemplate = getSceneTemplateById("opening-luminous-silk-filaments");
-    if (!openingTemplate) throw new Error("Missing Opening scene template: opening-luminous-silk-filaments");
-    return structuredClone(openingTemplate.config);
-  }
-
   const designPath = path.startsWith("/work/") ? "/" : path;
   const portfolioLines = ["/", "/about", "/playground"].includes(designPath)
     ? designPath === "/"

@@ -974,8 +974,7 @@ test("the homepage default is editable and isolated from About and Opening scene
   assert.equal(home.global.environment.lights.length, 2);
   assert.deepEqual(home.lines.filter((line) => line.environmentEnabled).map((line) => line.id), []);
   assert.ok(about.lines.every((line) => line.id.startsWith("about-")));
-  assert.ok(opening.lines.every((line) => line.id.startsWith("opening-luminous-silk-filaments-")));
-  assert.equal(opening.global.environment.airflowEnabled, true);
+  assert.equal(opening.lines.length, 0);
 });
 
 test("page defaults keep Home and Work aligned and leave special pages clear", () => {
@@ -984,7 +983,7 @@ test("page defaults keep Home and Work aligned and leave special pages clear", (
 
   assert.deepEqual(getPortfolioDefaultScene("/work/em-collection"), home);
   assert.deepEqual(getPortfolioDefaultScene("/work/codynn"), home);
-  assert.equal(getPortfolioDefaultScene("/opening").lines[0].id.startsWith("opening-luminous-silk-filaments-"), true);
+  assert.equal(getPortfolioDefaultScene("/opening").lines.length, 0);
   assert.equal(empty.lines.length, 0);
   assert.equal(getPortfolioDefaultScene("/404").lines.length, 0);
   assert.equal(getPortfolioDefaultScene("/under-construction").lines.length, 0);
@@ -1046,7 +1045,7 @@ test("the homepage uses the saved Opening scene only while its intro is active",
 
     testPath = "/opening";
     const openingMarkup = renderToStaticMarkup(React.createElement(TestBackground));
-    assert.match(openingMarkup, /data-scene-line-ids="opening-luminous-silk-filaments-/);
+    assert.match(openingMarkup, /data-scene-line-ids=""/);
     assert.match(openingMarkup, /data-opening-animation="true"/);
   } finally {
     Module._load = originalModuleLoad;
@@ -1103,6 +1102,7 @@ test("project page scenes are populated from the project-scene API cache", () =>
   assert.equal(home.lines[0].inherit.texture, false);
   assert.equal(home.lines[0].flow.effectType, "energy-pulse");
   assert.equal(home.lines[0].flow.speed, 0.12);
+  assert.equal(projectScenes["/opening"].lines.length, 0);
   replaceProjectPageScenes({ "/": home });
   const cachedHome = getProjectPageScene("/");
   assert.ok(cachedHome);

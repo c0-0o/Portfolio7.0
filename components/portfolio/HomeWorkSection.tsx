@@ -2,31 +2,153 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PortfolioActionButton } from "./PortfolioActionButton";
 import styles from "./HomeWorkSection.module.css";
 
-const caseStudyDetails = [
+const featuredProjects = [
   {
-    label: "THE CHALLENGE",
-    text: "How can shoppers quickly discover relevant products and find the information they need before moving to cart and checkout?",
+    id: "em-collection",
+    title: "EM COLLECTION",
+    href: "/work/em-collection",
+    year: "2026",
+    category: "01 / PRODUCT DESIGN + DEVELOPMENT",
+    summary:
+      "Ecommerce UI/UX design and full-stack development, focused on clear product discovery and a straightforward checkout.",
+    image: "/emcollectionthumbnail.png",
+    visual: "cover",
+    details: [
+      {
+        label: "THE CHALLENGE",
+        text: "How can shoppers quickly discover relevant products and find the information they need before moving to cart and checkout?",
+      },
+      {
+        label: "THE SOLUTION",
+        text: "Make product discovery, product details, and checkout steps feel clear, easy to follow, and simple to complete.",
+      },
+      {
+        label: "WHAT I'D TEST",
+        text: "Can shoppers quickly find products, understand the details, and move through checkout without confusion?",
+      },
+    ],
   },
   {
-    label: "THE SOLUTION",
-    text: "Make product discovery, product details, and checkout steps feel clear, easy to follow, and simple to complete.",
+    id: "xfog-of-war",
+    title: "XFog of War",
+    href: "/work/xfog-of-war",
+    year: "2026",
+    category: "02 / BROWSER GAME / UI & ICON DESIGN",
+    summary:
+      "A browser-based chess game with a designed game interface and custom chess-piece icon set.",
+    visual: "chess",
+    details: [
+      {
+        label: "THE CHALLENGE",
+        text: "Keep the chess board and game state readable while players focus on the match.",
+      },
+      {
+        label: "THE SOLUTION",
+        text: "Design the browser interface and chess-piece artwork together for a cohesive game experience.",
+      },
+      {
+        label: "WHAT I'D TEST",
+        text: "Can players identify pieces, follow the board, and make their next move confidently?",
+      },
+    ],
   },
   {
-    label: "WHAT I'D TEST",
-    text: "Can shoppers quickly find products, understand the details, and move through checkout without confusion?",
+    id: "codynn",
+    title: "CODINN",
+    href: "/work/codynn",
+    year: "2025",
+    category: "03 / HOMEPAGE REDESIGN / UX RESEARCH",
+    summary:
+      "A homepage redesign informed by competitor research, user personas, and user journey mapping.",
+    visual: "codynn",
+    details: [
+      {
+        label: "THE CHALLENGE",
+        text: "Help visitors understand Codynn and find a relevant next step on their first visit.",
+      },
+      {
+        label: "THE SOLUTION",
+        text: "Use research, personas, and journey mapping to guide the homepage structure and content priorities.",
+      },
+      {
+        label: "WHAT I'D TEST",
+        text: "Can visitors understand the offer and find a useful path forward without confusion?",
+      },
+    ],
   },
-];
+] as const;
 
-const earlierProjects = [
-  { title: "XFog of War", href: "/work/xfog-of-war" },
-  { title: "Codynn", href: "/work/codynn" },
-];
+type FeaturedProject = (typeof featuredProjects)[number];
 
-const totalProjectCount = earlierProjects.length + 1;
+function ProjectArtwork({ project, compact = false }: { project: FeaturedProject; compact?: boolean }) {
+  if (compact) {
+    if (project.visual === "cover") {
+      return (
+        <Image
+          className={styles.projectCardImage}
+          src={project.image}
+          alt=""
+          fill
+          sizes="(max-width: 560px) 30vw, 260px"
+        />
+      );
+    }
+
+    return <span className={styles.projectThumbnailArtwork} aria-hidden="true" />;
+  }
+
+  if (project.visual === "cover") {
+    return (
+      <Image
+        className={styles.featuredImage}
+        src={project.image}
+        alt=""
+        fill
+        sizes="(max-width: 800px) 100vw, 42vw"
+      />
+    );
+  }
+
+  const posterClassName = styles.projectPoster;
+
+  if (project.visual === "chess") {
+    return (
+      <div className={`${posterClassName} ${styles.chessPoster}`} aria-hidden="true">
+        <span className={styles.posterEyebrow}>BROWSER GAME / UI & ICON DESIGN</span>
+        <span className={styles.chessPosterTitle}>XFOG OF WAR</span>
+        <div className={styles.chessBoard}>
+          {Array.from({ length: 64 }, (_, square) => (
+            <span
+              className={styles.chessSquare}
+              data-tone={(Math.floor(square / 8) + square % 8) % 2 === 0 ? "light" : "dark"}
+              key={square}
+            />
+          ))}
+        </div>
+        <span className={styles.chessPiece}>♞</span>
+        <span className={styles.chessPosterNote}>CHESS, DESIGNED FOR THE BROWSER</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${posterClassName} ${styles.codynnPoster}`} aria-hidden="true">
+      <span className={styles.posterEyebrow}>HOMEPAGE REDESIGN / UX RESEARCH</span>
+      <span className={styles.codynnWordmark}>CODINN<span>.</span></span>
+      <span className={styles.codynnPosterTitle}>A HOMEPAGE BUILT AROUND PEOPLE.</span>
+      <div className={styles.codynnBlocks}>
+        <span />
+        <span />
+        <span />
+      </div>
+      <span className={styles.codynnPosterNote}>RESEARCH · PERSONAS · JOURNEYS</span>
+    </div>
+  );
+}
 
 function useInView<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -60,19 +182,53 @@ function useInView<T extends HTMLElement>() {
 
 export default function HomeWorkSection() {
   const [featuredRef, featuredInView] = useInView<HTMLElement>();
-  const [olderWorkRef, olderWorkInView] = useInView<HTMLDivElement>();
-  const projectListRef = useRef<HTMLDivElement>(null);
+  const [projectPickerRef, projectPickerInView] = useInView<HTMLDivElement>();
+  const [activeProjectIndex, setActiveProjectIndex] = useState(0);
+  const [pickerScrollProgress, setPickerScrollProgress] = useState(0);
+  const [pickerHasOverflow, setPickerHasOverflow] = useState(false);
+  const activeProject = featuredProjects[activeProjectIndex];
 
-  const scrollProjects = (direction: -1 | 1) => {
-    const projectList = projectListRef.current;
-    if (!projectList) return;
+  const updatePickerScroll = useCallback((picker: HTMLDivElement) => {
+    const maxScroll = Math.max(0, picker.scrollWidth - picker.clientWidth);
+    setPickerHasOverflow(maxScroll > 1);
+    setPickerScrollProgress(maxScroll > 1 ? picker.scrollLeft / maxScroll : 0);
+  }, []);
 
-    projectList.scrollBy({
-      left: direction * projectList.clientWidth * 0.82,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
+  useEffect(() => {
+    const picker = projectPickerRef.current;
+    if (!picker) return;
+
+    const handleResize = () => updatePickerScroll(picker);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [projectPickerRef, updatePickerScroll]);
+
+  useEffect(() => {
+    const picker = projectPickerRef.current;
+    const selectedCard = picker?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if (!picker || !selectedCard) return;
+
+    const pickerBounds = picker.getBoundingClientRect();
+    const cardBounds = selectedCard.getBoundingClientRect();
+
+    if (cardBounds.left < pickerBounds.left) {
+      picker.scrollTo({
+        left: picker.scrollLeft + cardBounds.left - pickerBounds.left,
+        behavior: "smooth",
+      });
+    } else if (cardBounds.right > pickerBounds.right) {
+      picker.scrollTo({
+        left: picker.scrollLeft + cardBounds.right - pickerBounds.right,
+        behavior: "smooth",
+      });
+    }
+  }, [activeProjectIndex, projectPickerRef]);
+
+  const changeProject = (direction: -1 | 1) => {
+    setActiveProjectIndex((current) =>
+      (current + direction + featuredProjects.length) % featuredProjects.length,
+    );
   };
 
   return (
@@ -83,44 +239,70 @@ export default function HomeWorkSection() {
 
       <div className={styles.worksList}>
         <article
+          id="featured-project"
+          data-project={activeProject.id}
           ref={featuredRef}
           className={`${styles.featuredWork} ${featuredInView ? styles.inView : ""}`}
         >
           <Link
+            key={`${activeProject.id}-visual`}
             className={styles.featuredVisual}
-            href="/work/em-collection"
-            aria-label="Open the EM Collection case study"
+            href={activeProject.href}
+            aria-label={`Open the ${activeProject.title} case study`}
           >
-            <div className={styles.backgroundShape} />
-            <Image
-              className={styles.architectureImage}
-              src="/portfolio/architecture.png"
-              alt=""
-              width={430}
-              height={389}
-              sizes="(max-width: 800px) 85vw, 40vw"
-            />
-            <div className={styles.darkSquare} />
-            <span className={styles.sparkle}>✦</span>
+            <span className={styles.featuredBacking} aria-hidden="true" />
+            <span className={styles.featuredArtwork} key={`${activeProject.id}-artwork`}>
+              <ProjectArtwork project={activeProject} />
+            </span>
+            <span className={styles.featuredAccent} aria-hidden="true" />
+            <span className={styles.featuredSparkle} aria-hidden="true">✦</span>
           </Link>
 
           <div className={styles.workDetails}>
-            <div className={styles.workIntro}>
-              <p className={styles.workCategory}>01 / PRODUCT DESIGN + DEVELOPMENT</p>
+            <div className={styles.workMeta}>
+              <p className={styles.workCategory}>{activeProject.category}</p>
+              <div className={styles.projectNavigation} role="group" aria-label="Featured project navigation">
+                <button
+                  className={`${styles.navButton} ${styles.previous}`}
+                  type="button"
+                  aria-label="Show previous project"
+                  aria-controls="featured-project"
+                  onClick={() => changeProject(-1)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M19 12H5m7 7-7-7 7-7" />
+                  </svg>
+                </button>
+                <span className={styles.projectPosition} aria-live="polite" aria-atomic="true">
+                  {String(activeProjectIndex + 1).padStart(2, "0")} / {String(featuredProjects.length).padStart(2, "0")}
+                  <span className={styles.screenReaderOnly}>: {activeProject.title}</span>
+                </span>
+                <button
+                  className={`${styles.navButton} ${styles.next}`}
+                  type="button"
+                  aria-label="Show next project"
+                  aria-controls="featured-project"
+                  onClick={() => changeProject(1)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14m-7-7 7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.projectDetails} key={`${activeProject.id}-details`}>
               <div className={styles.workOverview}>
                 <div className={styles.workCopy}>
                   <div className={styles.workDescription}>
-                    <h3 className={styles.workTitle}>EM COLLECTION</h3>
-                    <p className={styles.workSummary}>
-                      Ecommerce UI/UX design and full-stack development, focused on clear product
-                      discovery and a straightforward checkout.
-                    </p>
+                    <h3 className={styles.workTitle} id="featured-project-title">{activeProject.title}</h3>
+                    <p className={styles.workSummary}>{activeProject.summary}</p>
                   </div>
                 </div>
                 <Link
                   className={styles.externalLink}
-                  href="/work/em-collection"
-                  aria-label="Learn more about the EM Collection case study"
+                  href={activeProject.href}
+                  aria-label={`Learn more about the ${activeProject.title} case study`}
                 >
                   <Image
                     src="/Case study link.svg"
@@ -130,92 +312,86 @@ export default function HomeWorkSection() {
                   />
                 </Link>
               </div>
-            </div>
 
-            <div className={styles.caseStudyDetails}>
-              {caseStudyDetails.map(({ label, text }) => (
-                <div className={styles.caseStudyColumn} key={label}>
-                  <h4 className={styles.caseStudyLabel}>{label}</h4>
-                  <p className={styles.caseStudyText}>{text}</p>
-                </div>
-              ))}
-            </div>
+              <div className={styles.caseStudyDetails}>
+                {activeProject.details.map(({ label, text }) => (
+                  <div className={styles.caseStudyColumn} key={label}>
+                    <h4 className={styles.caseStudyLabel}>{label}</h4>
+                    <p className={styles.caseStudyText}>{text}</p>
+                  </div>
+                ))}
+              </div>
 
-            <div className={styles.caseStudyActions}>
-              <PortfolioActionButton to="/work/em-collection" label="Learn case study" />
-              <span className={styles.divider} aria-hidden="true" />
-              <a
-                className={styles.behanceLink}
-                href="https://www.behance.net/"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="View my Behance profile"
-              >
-                Bē
-              </a>
+              <div className={styles.caseStudyActions}>
+                <PortfolioActionButton to={activeProject.href} label="Learn case study" />
+                <span className={styles.divider} aria-hidden="true" />
+                <a
+                  className={styles.behanceLink}
+                  href="https://www.behance.net/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="View my Behance profile"
+                >
+                  Bē
+                </a>
+              </div>
             </div>
           </div>
         </article>
-
-        <div
-          ref={olderWorkRef}
-          className={`${styles.olderWorks} ${olderWorkInView ? styles.inView : ""}`}
-          aria-label="More selected projects"
-        >
-          <div className={styles.olderWorkHeading}>
-            <div>
-              <p className={styles.olderWorkLabel}>02 / MORE SELECTED WORK</p>
-              <p className={styles.olderWorkNote}>{totalProjectCount} projects</p>
-            </div>
-            <div className={styles.cardsNav} role="group" aria-label="Project carousel controls">
-              <button
-                className={`${styles.navButton} ${styles.previous}`}
-                type="button"
-                aria-label="Scroll to previous projects"
-                onClick={() => scrollProjects(-1)}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M19 12H5m7 7-7-7 7-7" />
-                </svg>
-              </button>
-              <button
-                className={`${styles.navButton} ${styles.next}`}
-                type="button"
-                aria-label="Scroll to next projects"
-                onClick={() => scrollProjects(1)}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 12h14m-7-7 7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
+        <div className={styles.projectPickerGroup}>
           <div
-            ref={projectListRef}
-            className={styles.projectViewport}
-            role="region"
-            aria-label="XFog of War and Codynn case studies"
-            tabIndex={0}
+            ref={projectPickerRef}
+            id="project-picker"
+            className={`${styles.projectPicker} ${projectPickerInView ? styles.inView : ""}`}
+            role="group"
+            aria-label="Choose a featured project"
+            onScroll={(event) => updatePickerScroll(event.currentTarget)}
           >
-            <div className={styles.projectGrid}>
-              {earlierProjects.map((project) => (
-                <Link
-                  className={styles.projectCard}
-                  href={project.href}
-                  aria-label={`View the ${project.title} case study`}
-                  key={project.title}
+            {featuredProjects.map((project, index) => {
+              const selected = index === activeProjectIndex;
+
+              return (
+                <button
+                  className={`${styles.projectCard}${selected ? ` ${styles.projectCardActive}` : ""}`}
+                  type="button"
+                  aria-label={`Show ${project.title} as the featured project`}
+                  aria-pressed={selected}
+                  aria-controls="featured-project"
+                  onClick={() => setActiveProjectIndex(index)}
+                  key={project.id}
                 >
-                  <span className={styles.cardYear}>2025</span>
-                  <span className={styles.cardShape} aria-hidden="true">
-                    <span className={styles.cardArtwork} />
-                    <span className={styles.cardDot} />
-                    <span className={styles.cardTitle}>{project.title}</span>
+                  <span className={styles.projectCardYear}>{project.year}</span>
+                  <span className={styles.projectCardVisual}>
+                    <ProjectArtwork project={project} compact />
+                    <span className={styles.projectCardDot} aria-hidden="true" />
                   </span>
-                </Link>
-              ))}
-            </div>
+                  <span className={styles.projectCardTitle}>{project.title}</span>
+                </button>
+              );
+            })}
           </div>
+          {pickerHasOverflow && (
+            <input
+              className={styles.projectPickerScrollControl}
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={Math.round(pickerScrollProgress * 100)}
+              aria-label="Scroll project cards"
+              aria-controls="project-picker"
+              onChange={(event) => {
+                const picker = projectPickerRef.current;
+                if (!picker) return;
+
+                const maxScroll = picker.scrollWidth - picker.clientWidth;
+                picker.scrollTo({
+                  left: (Number(event.currentTarget.value) / 100) * maxScroll,
+                  behavior: "smooth",
+                });
+              }}
+            />
+          )}
         </div>
       </div>
     </section>
