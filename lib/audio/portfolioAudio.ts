@@ -13,6 +13,7 @@ const MUSIC_TRACKS = [
 let audioContext: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let soundEnabled = true;
+let playbackStarted = false;
 let musicAudio: HTMLAudioElement | null = null;
 let playlist: string[] = [];
 let lastTrack = "";
@@ -36,8 +37,14 @@ function ensureMusicAudio() {
   if (musicAudio) return musicAudio;
 
   musicAudio = new Audio();
-  musicAudio.preload = "none";
+  musicAudio.preload = "auto";
   musicAudio.volume = 0.08;
+  musicAudio.addEventListener("playing", () => {
+    playbackStarted = true;
+  });
+  musicAudio.addEventListener("pause", () => {
+    if (!soundEnabled) playbackStarted = false;
+  });
   musicAudio.addEventListener("ended", () => {
     if (soundEnabled) {
       void playNextTrack().then((started) => {
@@ -55,11 +62,12 @@ function ensureMusicAudio() {
 }
 
 function refillPlaylist() {
-  playlist = [...MUSIC_TRACKS];
-  for (let i = playlist.length - 1; i > 0; i -= 1) {
+  const remaining = [...MUSIC_TRACKS.slice(1)];
+  for (let i = remaining.length - 1; i > 0; i -= 1) {
     const swapIndex = Math.floor(Math.random() * (i + 1));
-    [playlist[i], playlist[swapIndex]] = [playlist[swapIndex], playlist[i]];
+    [remaining[i], remaining[swapIndex]] = [remaining[swapIndex], remaining[i]];
   }
+  playlist = [MUSIC_TRACKS[0], ...remaining];
   if (playlist.length > 1 && playlist[0] === lastTrack) {
     [playlist[0], playlist[1]] = [playlist[1], playlist[0]];
   }
@@ -83,6 +91,7 @@ async function playNextTrack() {
   audio.src = track;
   try {
     await audio.play();
+    playbackStarted = true;
     return true;
   } catch (error) {
     if (error instanceof DOMException && error.name === "NotAllowedError") {
@@ -103,9 +112,14 @@ async function resumeOrStartMusic() {
   const audio = ensureMusicAudio();
   const start = (async () => {
     if (!audio.src) return playNextTrack();
+    if (!audio.paused && !audio.ended && audio.readyState >= 2) {
+      playbackStarted = true;
+      return true;
+    }
 
     try {
       await audio.play();
+      playbackStarted = true;
       return true;
     } catch (error) {
       if (error instanceof DOMException && error.name === "NotAllowedError") return false;
@@ -127,6 +141,7 @@ export async function setPortfolioSoundEnabled(enabled: boolean) {
   window.localStorage.setItem(PORTFOLIO_SOUND_STORAGE_KEY, enabled ? "on" : "off");
 
   if (!enabled) {
+    playbackStarted = false;
     musicAudio?.pause();
     if (audioContext && masterGain) {
       const context = audioContext;
@@ -163,10 +178,13 @@ export function isPortfolioSoundEnabled() {
   return soundEnabled;
 }
 
+export function isPortfolioSoundPlaying() {
+  return playbackStarted && Boolean(musicAudio?.paused === false);
+}
+
 export function getInitialPortfolioSoundEnabled() {
   const preference = window.localStorage.getItem(PORTFOLIO_SOUND_STORAGE_KEY);
-  if (preference === "off") return false;
-  return true;
+  return preference === "on";
 }
 
 export function playCatCue(cue: CatCue) {

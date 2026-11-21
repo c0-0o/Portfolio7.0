@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   getInitialPortfolioSoundEnabled,
   isPortfolioSoundEnabled,
+  isPortfolioSoundPlaying,
   setPortfolioSoundEnabled,
 } from "@/lib/audio/portfolioAudio";
 
 export function SoundToggle() {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -58,7 +59,10 @@ export function SoundToggle() {
     window.addEventListener("portfolio-audio-blocked", addRetryListeners);
     window.addEventListener("portfolio-audio-error", reportError);
     void setPortfolioSoundEnabled(initialEnabled).then((started) => {
-      if (!isPortfolioSoundEnabled()) return;
+      if (!isPortfolioSoundEnabled()) {
+        setEnabled(false);
+        return;
+      }
       setEnabled(initialEnabled);
       if (!started) addRetryListeners();
     }).catch((audioError: unknown) => {
@@ -82,8 +86,14 @@ export function SoundToggle() {
     setError("");
 
     try {
-      await setPortfolioSoundEnabled(!enabled);
-      setEnabled(!enabled);
+      if (enabled && !isPortfolioSoundPlaying()) {
+        const started = await setPortfolioSoundEnabled(true);
+        setEnabled(started);
+        return;
+      }
+      const nextEnabled = !enabled;
+      await setPortfolioSoundEnabled(nextEnabled);
+      setEnabled(nextEnabled);
     } catch (audioError) {
       setError(
         audioError instanceof Error
