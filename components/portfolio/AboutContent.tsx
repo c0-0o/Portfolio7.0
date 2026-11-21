@@ -2,8 +2,8 @@ import Image from "next/image";
 import { MagneticTarget } from "@/lib/magnetic-lines";
 import { SectionLabel, SiteShell, Tag } from "./site";
 
-const PORTRAIT = "/idneittycard2.jpeg";
-const DESK = "/portfolio/desk.png";
+const PORTRAIT = "/portfolio/portrait-annotation.webp";
+const DESK = "/portfolio/about-us-second.webp";
 
 const principles = [
   {
@@ -61,67 +61,16 @@ export default function AboutRoute() {
               <Tag>Rive</Tag>
             </div>
           </div>
-          <div className="relative order-1 mx-auto aspect-23/25 w-full max-w-92 shrink-0 text-[clamp(11px,3.8vw,14px)] tracking-[clamp(0.7px,0.27vw,1px)] lg:order-2 lg:mx-0">
-            <div className="absolute top-[16.5%] left-[4.35%] h-[73.5%] w-[75%] rotate-[7deg] overflow-hidden rounded-[20px]">
-              <Image
-                src={PORTRAIT}
-                alt="Portrait of Dipak"
-                fill
-                sizes="(min-width: 368px) 276px, 75vw"
-                loading="eager"
-                className="object-cover object-[66%_center]"
-              />
-            </div>
-            <svg
-              className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-              viewBox="0 0 368 400"
-              preserveAspectRatio="none"
-              fill="none"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <defs>
-                <marker
-                  id="about-portrait-arrow"
-                  markerWidth="6"
-                  markerHeight="6"
-                  refX="5"
-                  refY="3"
-                  orient="auto"
-                  markerUnits="strokeWidth"
-                >
-                  <path d="M0 0L6 3L0 6" fill="none" stroke="#b3bbaa" strokeWidth="1" />
-                </marker>
-              </defs>
-              <path
-                d="M66 33C66 46 68 53 80 60L98 72"
-                stroke="#b3bbaa"
-                strokeWidth="1.4"
-                strokeDasharray="2 4"
-                strokeLinecap="round"
-                markerEnd="url(#about-portrait-arrow)"
-              />
-              <path
-                d="M300 15C320 13 324 18 319 37L300 70"
-                stroke="#b3bbaa"
-                strokeWidth="1.4"
-                strokeDasharray="2 4"
-                strokeLinecap="round"
-                markerEnd="url(#about-portrait-arrow)"
-              />
-              <path
-                d="M10 350C14 344 22 342 30 343"
-                stroke="#b3bbaa"
-                strokeWidth="1.4"
-                strokeDasharray="2 4"
-                strokeLinecap="round"
-                markerEnd="url(#about-portrait-arrow)"
-              />
-            </svg>
-            <span className="absolute top-[2%] left-[44.7%] z-20 text-[#747c6d]">OVERTHINKER</span>
-            <span className="absolute top-[6.5%] left-[1.63%] z-20 font-bold text-muted">CALM</span>
-            <span className="absolute top-[88.5%] left-[1.63%] z-20 font-bold text-muted">CURIOUS</span>
-            <span className="font-display absolute top-[9.5%] left-[78.4%] z-20 text-[clamp(36px,14vw,58px)] text-lime">✦</span>
+          <div className="relative order-1 mx-auto aspect-372/400 w-full max-w-105 shrink-0 lg:order-2 lg:mx-0">
+            <Image
+              src={PORTRAIT}
+              alt="Portrait of Dipak with calm, overthinker and curious annotations"
+              fill
+              sizes="(min-width: 1024px) 420px, 75vw"
+              loading="eager"
+              unoptimized
+              className="object-contain"
+            />
           </div>
         </div>
       </section>
@@ -129,11 +78,12 @@ export default function AboutRoute() {
       <section className="page-entry page-entry--1 gutter flex flex-col items-center gap-10 bg-paper-2 py-14 md:flex-row md:gap-20 md:py-22">
         <Image
           src={DESK}
-          alt="A desk with sketchbooks by a window"
-          width={510}
-          height={460}
+          alt="Interface timeline and issue dashboard shown on a laptop"
+          width={590}
+          height={367}
           sizes="(min-width: 768px) 510px, 100vw"
-          className="aspect-510/460 w-full rounded-[20px] object-cover md:w-127.5 md:shrink-0"
+          unoptimized
+          className="h-auto w-full object-contain md:w-127.5 md:shrink-0"
         />
         <div className="flex flex-1 flex-col gap-6">
           <h2 className="text-[clamp(34px,4vw,56px)] leading-[1.02]">

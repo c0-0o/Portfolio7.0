@@ -231,7 +231,7 @@ export default function HomeAnimatedSections() {
             <br />
             <WordReveal start={2} reducedMotion={reduce}>A QUESTION ASKER.</WordReveal>
             <br />
-            <WordReveal start={5} reducedMotion={reduce}>A WORK IN PROGRESS.</WordReveal>
+            <WordReveal start={5} reducedMotion={reduce}>AN ENDLESS LEARNER.</WordReveal>
           </motion.h2>
           <motion.p
             className="max-w-160 text-lg leading-[1.6] text-muted"

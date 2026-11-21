@@ -16,16 +16,6 @@ const EXPLORE = {
   about: { label: "About", href: "/about" },
   playground: { label: "Playground", href: "/playground" },
 } as const;
-const ELSEWHERE = [
-  [
-    { label: "Behance", href: "https://www.behance.net/paharidipak" },
-    { label: "Dribbble", href: "https://dribbble.com/dipak-pahari" },
-  ],
-  [
-    { label: "LinkedIn", href: "https://www.linkedin.com/in/iamu/" },
-    { label: "Instagram", href: "https://www.instagram.com/i_am_puredevil/?hl=en" },
-  ],
-] as const;
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -93,6 +83,15 @@ function Out({ label, href }: { label: string; href: string }) {
       {label}
       <Image className={s.out} src="/Sociallinks.svg" alt="" width={9} height={9} />
     </a>
+  );
+}
+
+function DisabledOut({ label }: { label: string }) {
+  return (
+    <span className={`${s.link} pointer-events-none select-none opacity-35`} aria-disabled="true">
+      {label}
+      <Image className={s.out} src="/Sociallinks.svg" alt="" width={9} height={9} />
+    </span>
   );
 }
 
@@ -239,14 +238,13 @@ export const ContactAndFooter = ({
               <span className={s.groupLabel}>ELSEWHERE</span>
             </div>
             <div className={s.links}>
-              {ELSEWHERE.map((row, i) => (
-                <React.Fragment key={i}>
-                  {i > 0 && <br />}
-                  <Out {...row[0]} />
-                  <Sep />
-                  <Out {...row[1]} />
-                </React.Fragment>
-              ))}
+              <Out label="Behance" href="https://www.behance.net/paharidipak" />
+              <Sep />
+              <DisabledOut label="Dribbble" />
+              <br />
+              <Out label="LinkedIn" href="https://www.linkedin.com/in/iamu/" />
+              <Sep />
+              <DisabledOut label="Instagram" />
             </div>
           </motion.nav>
         </div>

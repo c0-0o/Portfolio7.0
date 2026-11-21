@@ -117,6 +117,29 @@ body > main {
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
+.scroll-reveal-pending {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  transition:
+    opacity 480ms cubic-bezier(.22, 1, .36, 1),
+    transform 480ms cubic-bezier(.22, 1, .36, 1);
+  will-change: opacity, transform;
+}
+
+.scroll-reveal-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal-pending,
+  .scroll-reveal-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 .showcase { position: relative; z-index: 1; min-height: 100dvh; padding: 28px clamp(20px, 5vw, 80px) 64px; color: #17201d; background: transparent; }
 .showcase-nav { display: flex; justify-content: space-between; align-items: center; max-width: 1280px; margin: 0 auto; font: 11px/1.2 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
 .nav-links { display: flex; gap: 24px; }
@@ -2358,6 +2381,57 @@ html[data-custom-cursor="true"] body:not([data-native-cursor-active="true"]) .cu
 
 :root {
   --builder-page-gutter: clamp(16px, 5vw, 72px);
+}
+
+.xfog-case-study {
+  --color-lime: #98bd69;
+  --color-moss: #526f3f;
+}
+
+.xfog-case-study h1 {
+  letter-spacing: -0.045em;
+}
+
+.xfog-case-study figure {
+  border: 1px solid #d9dfd1;
+  background: #f1f3ec;
+  box-shadow: 0 16px 36px rgb(35 48 38 / 7%);
+}
+
+.xfog-case-study figure figcaption {
+  color: #5f6859;
+  letter-spacing: 0.01em;
+}
+
+.xfog-case-study .xfog-match-desktop {
+  border-radius: 18px;
+  background: #dde5d7;
+}
+
+.xfog-case-study .xfog-match-mobile {
+  border-radius: 20px;
+  background: #edf0e7;
+  border-color: #d4dbcd;
+  box-shadow: 0 18px 44px rgb(35 48 38 / 11%);
+}
+
+.xfog-case-study .xfog-match-mobile figcaption {
+  border-top: 1px solid #dde3d6;
+  background: #f7f8f3;
+}
+
+@media (max-width: 639px) {
+  .xfog-case-study {
+    --builder-page-gutter: 20px;
+  }
+
+  .xfog-case-study h1 {
+    max-width: 5.8em;
+  }
+
+  .xfog-case-study .xfog-match-mobile {
+    max-width: 260px;
+  }
 }
 
 .builder-portfolio {

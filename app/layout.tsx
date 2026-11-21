@@ -3,6 +3,7 @@ import { DM_Sans, Geist, Geist_Mono, Lilita_One } from "next/font/google";
 import { CursorEffectsOverlay } from "@/lib/cursor-effects/CursorEffects";
 import { PersistentMagneticBackground } from "@/lib/magnetic-lines";
 import { SoundToggle } from "@/components/portfolio/SoundToggle";
+import { ScrollReveal } from "@/components/portfolio/ScrollReveal";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -124,6 +125,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       >
         <body className="min-h-full flex flex-col">
           <PersistentMagneticBackground />
+          <ScrollReveal />
           {children}
           <CursorEffectsOverlay />
           <SoundToggle />

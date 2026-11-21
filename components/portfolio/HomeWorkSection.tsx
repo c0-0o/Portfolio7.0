@@ -65,6 +65,7 @@ const featuredProjects = [
   {
     id: "irevise",
     title: "IREVISE",
+    caseStudyHref: "/work/irevise",
     behanceHref: "https://www.behance.net/gallery/258780693/iRevise?platform=direct",
     year: "2025",
     category: "Client Work",

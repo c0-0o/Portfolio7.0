@@ -1,5 +1,7 @@
 type CatCue = "appear" | "react";
 
+const PORTFOLIO_SOUND_STORAGE_KEY = "portfolio-background-sound";
+
 const MUSIC_TRACKS = [
   "/cinematic-house-take-1.mp3",
   "/Luminous%20Horizons.wav",
@@ -122,6 +124,7 @@ async function resumeOrStartMusic() {
 
 export async function setPortfolioSoundEnabled(enabled: boolean) {
   soundEnabled = enabled;
+  window.localStorage.setItem(PORTFOLIO_SOUND_STORAGE_KEY, enabled ? "on" : "off");
 
   if (!enabled) {
     musicAudio?.pause();
@@ -158,6 +161,12 @@ export async function setPortfolioSoundEnabled(enabled: boolean) {
 
 export function isPortfolioSoundEnabled() {
   return soundEnabled;
+}
+
+export function getInitialPortfolioSoundEnabled() {
+  const preference = window.localStorage.getItem(PORTFOLIO_SOUND_STORAGE_KEY);
+  if (preference === "off") return false;
+  return true;
 }
 
 export function playCatCue(cue: CatCue) {
