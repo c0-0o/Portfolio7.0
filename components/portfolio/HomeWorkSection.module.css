@@ -165,18 +165,14 @@
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.projectThumbnailArtwork {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: 7px;
-  background: #141712;
-  box-shadow: 0 8px 18px #14171224;
-  transform: rotate(-4deg);
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+.projectCardImageFill {
+  object-fit: fill;
 }
 
-.projectCard:hover .projectThumbnailArtwork,
+.projectCardImageCover {
+  object-fit: cover;
+}
+
 .projectCard:hover .projectCardImage {
   transform: rotate(-2deg);
 }
@@ -235,7 +231,7 @@
 
 .featuredBacking {
   position: absolute;
-  top: 2%;
+  top: 6%;
   left: 6%;
   z-index: 1;
   width: 90%;
@@ -249,7 +245,7 @@
 
 .featuredArtwork {
   position: absolute;
-  top: 4%;
+  top: 10%;
   left: 8%;
   z-index: 2;
   display: block;
@@ -267,6 +263,14 @@
   position: absolute;
   inset: 0;
   object-fit: cover;
+}
+
+.featuredImageContain {
+  object-fit: contain;
+}
+
+.imageBackgroundLight {
+  background: #f4f5f2;
 }
 
 .featuredAccent {
@@ -309,145 +313,6 @@
 .featuredVisual:hover .featuredSparkle,
 .featuredVisual:focus-visible .featuredSparkle {
   transform: rotate(45deg) scale(1.05);
-}
-
-.projectPoster {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  color: #f5f7f0;
-}
-
-.posterEyebrow {
-  position: absolute;
-  top: 8%;
-  left: 8%;
-  z-index: 2;
-  font-size: clamp(8px, 1vw, 11px);
-  letter-spacing: 0.14em;
-}
-
-.chessPoster {
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(circle at 75% 30%, #9dca68 0, transparent 34%),
-    linear-gradient(135deg, #253120, #10140f 68%);
-}
-
-.chessPosterTitle {
-  position: absolute;
-  top: 20%;
-  left: 8%;
-  z-index: 1;
-  max-width: 62%;
-  font: 400 clamp(30px, 5vw, 64px) / 0.94 var(--font-lilita-one), sans-serif;
-}
-
-.chessBoard {
-  position: absolute;
-  right: 7%;
-  bottom: 8%;
-  display: grid;
-  width: 43%;
-  aspect-ratio: 1;
-  grid-template-columns: repeat(8, 1fr);
-  overflow: hidden;
-  border: 5px solid #f5f7f0;
-  border-radius: 4px;
-  box-shadow: 0 14px 40px #0006;
-  transform: rotate(7deg);
-}
-
-.chessSquare[data-tone="light"] {
-  background: #e6e9dc;
-}
-
-.chessSquare[data-tone="dark"] {
-  background: #48613a;
-}
-
-.chessPiece {
-  position: absolute;
-  right: 27%;
-  bottom: 24%;
-  z-index: 2;
-  color: #f5f7f0;
-  font-size: clamp(58px, 9vw, 112px);
-  line-height: 1;
-  text-shadow: 0 8px 18px #0008;
-}
-
-.chessPosterNote,
-.codynnPosterNote {
-  position: absolute;
-  bottom: 8%;
-  left: 8%;
-  font-size: clamp(8px, 1vw, 11px);
-  letter-spacing: 0.1em;
-}
-
-.codynnPoster {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 8%;
-  background:
-    radial-gradient(ellipse at 85% 20%, #8ec75a 0, transparent 34%),
-    linear-gradient(145deg, #27351f, #10140f 70%);
-}
-
-.codynnWordmark {
-  position: relative;
-  z-index: 1;
-  font: 400 clamp(54px, 9vw, 112px) / 0.95 var(--font-lilita-one), sans-serif;
-  letter-spacing: -0.04em;
-}
-
-.codynnWordmark span {
-  color: #adeb66;
-}
-
-.codynnPosterTitle {
-  position: relative;
-  z-index: 1;
-  max-width: 72%;
-  margin-top: 16px;
-  font-size: clamp(13px, 2vw, 22px);
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: 0.06em;
-}
-
-.codynnBlocks {
-  position: absolute;
-  right: 8%;
-  bottom: 17%;
-  display: flex;
-  width: 36%;
-  height: 24%;
-  align-items: flex-end;
-  gap: 5%;
-  transform: rotate(-8deg);
-}
-
-.codynnBlocks span {
-  flex: 1;
-  border: 1px solid #dff3cb66;
-  border-radius: 6px 6px 0 0;
-  background: #adeb661a;
-}
-
-.codynnBlocks span:nth-child(1) {
-  height: 55%;
-}
-
-.codynnBlocks span:nth-child(2) {
-  height: 82%;
-}
-
-.codynnBlocks span:nth-child(3) {
-  height: 100%;
 }
 
 .featuredVisual:focus-visible {
@@ -562,6 +427,7 @@
 }
 
 .workDescription {
+  min-height: max(135px, calc(260px - 8.7vw));
   margin-top: 0;
 }
 
@@ -579,6 +445,24 @@
   color: #62695c;
   font-size: 14px;
   line-height: 1.7;
+}
+
+.projectTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.projectTags li {
+  padding: 5px 10px;
+  border: 1px solid #dfe2d9;
+  border-radius: 999px;
+  color: #62695c;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .externalLink {
@@ -608,6 +492,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  min-height: max(144px, calc(250px - 7.4vw));
   padding-top: 20px;
   border-top: 1px solid #dde2d6;
 }
@@ -742,6 +627,11 @@
 
   .workDetails {
     gap: 24px;
+  }
+
+  .workDescription,
+  .caseStudyDetails {
+    min-height: 0;
   }
 
   .projectDetails {

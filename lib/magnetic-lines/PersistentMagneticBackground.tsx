@@ -20,7 +20,6 @@ const ROUTE_LINE_COLORS: Record<string, string> = {
   "/about": "#A5B49B",
   "/projects": "#9a9872",
   "/playground": "#73998b",
-  "/work/em-collection": "#8e9a6a",
   "/opening": "#7AD321",
 };
 
@@ -423,12 +422,6 @@ const PORTFOLIO_LINE_DESIGNS: Record<string, PortfolioLineDesign[]> = {
       aspectRatio: ABOUT_PATTERN_ASPECT_RATIO,
     },
   ],
-  "/work/em-collection": [
-    { points: [{ x: 0.68, y: 0.32 }, { x: 0.88, y: 0.32 }, { x: 0.86, y: 0.65 }, { x: 0.7, y: 0.65 }, { x: 0.68, y: 0.32 }], opacity: 0.46, width: 1.05, targetId: "em-collection-title", glow: true },
-    { points: [{ x: 0.72, y: 0.32 }, { x: 0.73, y: 0.22 }, { x: 0.76, y: 0.17 }, { x: 0.8, y: 0.17 }, { x: 0.84, y: 0.22 }, { x: 0.85, y: 0.32 }], opacity: 0.4, width: 0.95 },
-    { points: [{ x: 0.73, y: 0.43 }, { x: 0.82, y: 0.43 }, { x: 0.82, y: 0.53 }, { x: 0.73, y: 0.53 }, { x: 0.73, y: 0.43 }], opacity: 0.34, width: 0.9, flow: true },
-    { points: [{ x: 0.07, y: 0.72 }, { x: 0.2, y: 0.68 }, { x: 0.32, y: 0.72 }, { x: 0.39, y: 0.83 }], opacity: 0.36, width: 0.9 },
-  ],
   "/not-found": [
     { points: [{ x: 0.07, y: 0.28 }, { x: 0.2, y: 0.14 }, { x: 0.38, y: 0.2 }, { x: 0.43, y: 0.37 }, { x: 0.34, y: 0.52 }, { x: 0.16, y: 0.51 }, { x: 0.08, y: 0.38 }], opacity: 0.58, width: 1.15, targetId: "not-found-mark", glow: true },
     { points: [{ x: 0.13, y: 0.31 }, { x: 0.23, y: 0.22 }, { x: 0.35, y: 0.26 }, { x: 0.38, y: 0.37 }, { x: 0.31, y: 0.46 }, { x: 0.19, y: 0.45 }, { x: 0.13, y: 0.37 }], opacity: 0.44, width: 0.95, targetId: "not-found-mark", flow: true },
@@ -461,7 +454,7 @@ const HOME_BACKGROUND_LIGHTS = [
 ];
 
 export function getPortfolioDefaultScene(path: string): MagneticLinesSceneConfig {
-  const designPath = path.startsWith("/work/") ? "/" : path;
+  const designPath = path;
   const portfolioLines = ["/", "/about", "/playground"].includes(designPath)
     ? designPath === "/"
       ? PORTFOLIO_LINE_DESIGNS[designPath].filter((design) => design.id === "home-grid")
@@ -476,7 +469,7 @@ export function getPortfolioDefaultScene(path: string): MagneticLinesSceneConfig
     };
   }
 
-  const color = ROUTE_LINE_COLORS[designPath] ?? "#839a68";
+  const color = ROUTE_LINE_COLORS[path] ?? "#839a68";
   const colorStyle = { type: "solid" as const, colors: [color] };
 
   return {

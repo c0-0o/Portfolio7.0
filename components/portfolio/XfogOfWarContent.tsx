@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MagneticTarget } from "@/lib/magnetic-lines";
-import { SectionLabel, SiteShell, Tag } from "./site";
+import { BackToWorkLink, SectionLabel, SiteShell, Tag } from "./site";
 
 const tags = ["Browser chess game", "Game UI", "Chess-piece icons", "Icon design"];
 
@@ -22,9 +22,7 @@ export default function XfogOfWarContent() {
     <SiteShell activePage="projects">
       <section className="gutter flex flex-col gap-8 pt-6 pb-14 md:gap-12 md:pt-14 md:pb-20">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-          <Link href="/#work" className="text-sm text-muted hover:text-ink">
-            ← Back to selected work
-          </Link>
+          <BackToWorkLink label="Back to selected work" />
           <SectionLabel>BROWSER GAME / UI & ICON DESIGN</SectionLabel>
         </div>
 

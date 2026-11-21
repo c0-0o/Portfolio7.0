@@ -10,73 +10,85 @@ const featuredProjects = [
   {
     id: "em-collection",
     title: "EM COLLECTION",
-    href: "/work/em-collection",
+    caseStudyHref: "/work/em-collection",
+    behanceHref: "https://www.behance.net/gallery/257917561/EM-Collection",
     year: "2026",
-    category: "01 / PRODUCT DESIGN + DEVELOPMENT",
+    category: "Client Work",
     summary:
-      "Ecommerce UI/UX design and full-stack development, focused on clear product discovery and a straightforward checkout.",
+      "Ecommerce UI/UX design and full-stack development, creating a seamless shopping experience from product discovery to order completion.",
     image: "/emcollectionthumbnail.png",
-    visual: "cover",
+    unoptimized: true,
+    tags: ["Ecommerce", "UI/UX Design", "FullStack Development", "Responsive Design"],
     details: [
       {
+        label: "THE PROBLEM",
+        text: "Unclear product information and complicated checkout experiences can lead to abandoned purchases.",
+      },
+      {
         label: "THE CHALLENGE",
-        text: "How can shoppers quickly discover relevant products and find the information they need before moving to cart and checkout?",
+        text: "Help shoppers find the right footwear and make confident purchase decisions without unnecessary steps.",
       },
       {
         label: "THE SOLUTION",
-        text: "Make product discovery, product details, and checkout steps feel clear, easy to follow, and simple to complete.",
-      },
-      {
-        label: "WHAT I'D TEST",
-        text: "Can shoppers quickly find products, understand the details, and move through checkout without confusion?",
+        text: "Provide helpful product details, guest checkout, and optional account creation with benefits introduced after purchase.",
       },
     ],
   },
   {
     id: "xfog-of-war",
-    title: "XFog of War",
-    href: "/work/xfog-of-war",
+    title: "XFOG OF WAR",
+    caseStudyHref: "/work/xfog-of-war",
+    behanceHref: "https://www.behance.net/gallery/258780035/XFog-Of-War",
     year: "2026",
-    category: "02 / BROWSER GAME / UI & ICON DESIGN",
+    category: "Team Project",
     summary:
-      "A browser-based chess game with a designed game interface and custom chess-piece icon set.",
-    visual: "chess",
+      "A fog-of-war chess experience with clearer rules, custom pieces and a board-first interface for desktop and mobile.",
+    image: "/Play%20now%20%E2%80%A2%20square%20card.webp",
+    imageFit: "contain",
+    thumbnailImageFit: "fill",
+    tags: ["Game Design", "Chess", "UI/UX Design", "Icon Design"],
     details: [
       {
+        label: "THE PROBLEM",
+        text: "Balancing chess pieces, board colors, fog, and new gameplay elements without making the board visually overwhelming.",
+      },
+      {
         label: "THE CHALLENGE",
-        text: "Keep the chess board and game state readable while players focus on the match.",
+        text: "Introduce new mechanics without disrupting gameplay or making the game difficult for new players to understand.",
       },
       {
         label: "THE SOLUTION",
-        text: "Design the browser interface and chess-piece artwork together for a cohesive game experience.",
-      },
-      {
-        label: "WHAT I'D TEST",
-        text: "Can players identify pieces, follow the board, and make their next move confidently?",
+        text: "Custom chess pieces, a board-first layout, visual guidance, and separate tutorials for basic chess and Fog of War rules.",
       },
     ],
   },
   {
-    id: "codynn",
-    title: "CODINN",
-    href: "/work/codynn",
+    id: "irevise",
+    title: "IREVISE",
+    behanceHref: "https://www.behance.net/gallery/258780693/iRevise?platform=direct",
     year: "2025",
-    category: "03 / HOMEPAGE REDESIGN / UX RESEARCH",
+    category: "Client Work",
     summary:
-      "A homepage redesign informed by competitor research, user personas, and user journey mapping.",
-    visual: "codynn",
+      "A teacher-led learning platform connecting exam creation, student practice, and meaningful feedback across desktop and mobile.",
+    image: "/iRevise%20%E2%80%94%20Behance%20thumbnail.webp",
+    imageFit: "cover",
+    thumbnailImageFit: "cover",
+    imageBackground: "light",
+    featuredImage: "/iRevise%20%E2%80%94%20Behance%20thumbnail%20for%20bigger.webp",
+    unoptimized: true,
+    tags: ["EdTech", "UX research", "Product design", "UI Design"],
     details: [
       {
+        label: "THE PROBLEM",
+        text: "The previous platform had useful features but lacked the information and resources teachers needed to create exams easily and accurately.",
+      },
+      {
         label: "THE CHALLENGE",
-        text: "Help visitors understand Codynn and find a relevant next step on their first visit.",
+        text: "Balance the different needs of teachers, students, and parents while keeping the experience simple and aligned with business goals.",
       },
       {
         label: "THE SOLUTION",
-        text: "Use research, personas, and journey mapping to guide the homepage structure and content priorities.",
-      },
-      {
-        label: "WHAT I'D TEST",
-        text: "Can visitors understand the offer and find a useful path forward without confusion?",
+        text: "Create simplified, role-based experiences with focused workflows for exam creation, student learning, and parent progress tracking.",
       },
     ],
   },
@@ -85,68 +97,41 @@ const featuredProjects = [
 type FeaturedProject = (typeof featuredProjects)[number];
 
 function ProjectArtwork({ project, compact = false }: { project: FeaturedProject; compact?: boolean }) {
-  if (compact) {
-    if (project.visual === "cover") {
-      return (
-        <Image
-          className={styles.projectCardImage}
-          src={project.image}
-          alt=""
-          fill
-          sizes="(max-width: 560px) 30vw, 260px"
-        />
-      );
-    }
-
-    return <span className={styles.projectThumbnailArtwork} aria-hidden="true" />;
-  }
-
-  if (project.visual === "cover") {
-    return (
-      <Image
-        className={styles.featuredImage}
-        src={project.image}
-        alt=""
-        fill
-        sizes="(max-width: 800px) 100vw, 42vw"
-      />
-    );
-  }
-
-  const posterClassName = styles.projectPoster;
-
-  if (project.visual === "chess") {
-    return (
-      <div className={`${posterClassName} ${styles.chessPoster}`} aria-hidden="true">
-        <span className={styles.posterEyebrow}>BROWSER GAME / UI & ICON DESIGN</span>
-        <span className={styles.chessPosterTitle}>XFOG OF WAR</span>
-        <div className={styles.chessBoard}>
-          {Array.from({ length: 64 }, (_, square) => (
-            <span
-              className={styles.chessSquare}
-              data-tone={(Math.floor(square / 8) + square % 8) % 2 === 0 ? "light" : "dark"}
-              key={square}
-            />
-          ))}
-        </div>
-        <span className={styles.chessPiece}>♞</span>
-        <span className={styles.chessPosterNote}>CHESS, DESIGNED FOR THE BROWSER</span>
-      </div>
-    );
-  }
-
   return (
-    <div className={`${posterClassName} ${styles.codynnPoster}`} aria-hidden="true">
-      <span className={styles.posterEyebrow}>HOMEPAGE REDESIGN / UX RESEARCH</span>
-      <span className={styles.codynnWordmark}>CODINN<span>.</span></span>
-      <span className={styles.codynnPosterTitle}>A HOMEPAGE BUILT AROUND PEOPLE.</span>
-      <div className={styles.codynnBlocks}>
-        <span />
-        <span />
-        <span />
-      </div>
-      <span className={styles.codynnPosterNote}>RESEARCH · PERSONAS · JOURNEYS</span>
-    </div>
+    <Image
+      className={
+        compact
+          ? [
+              styles.projectCardImage,
+              "thumbnailImageFit" in project && project.thumbnailImageFit === "cover"
+                ? styles.projectCardImageCover
+                : "thumbnailImageFit" in project && project.thumbnailImageFit === "fill"
+                  ? styles.projectCardImageFill
+                  : "",
+              "imageBackground" in project && project.imageBackground === "light"
+                ? styles.imageBackgroundLight
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : [
+              styles.featuredImage,
+              "imageFit" in project && project.imageFit === "contain"
+                ? styles.featuredImageContain
+                : "",
+              "imageBackground" in project && project.imageBackground === "light"
+                ? styles.imageBackgroundLight
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
+      }
+      src={!compact && "featuredImage" in project ? project.featuredImage : project.image}
+      alt=""
+      fill
+      unoptimized={"unoptimized" in project && project.unoptimized}
+      sizes={compact ? "(max-width: 560px) 30vw, 260px" : "(max-width: 800px) 100vw, 42vw"}
+    />
   );
 }
 
@@ -180,6 +165,116 @@ function useInView<T extends HTMLElement>() {
   return [ref, inView] as const;
 }
 
+function FeaturedProjectDetails({
+  project,
+  activeProjectIndex,
+  projectCount,
+  caseStudyHref,
+  behanceHref,
+  projectHref,
+  onChangeProject,
+}: {
+  project: FeaturedProject;
+  activeProjectIndex: number;
+  projectCount: number;
+  caseStudyHref?: string;
+  behanceHref?: string;
+  projectHref: string;
+  onChangeProject: (direction: -1 | 1) => void;
+}) {
+  return (
+    <div className={styles.workDetails}>
+      <div className={styles.workMeta}>
+        <p className={styles.workCategory}>{project.year} / {project.category}</p>
+        <div className={styles.projectNavigation} role="group" aria-label="Featured project navigation">
+          <button
+            className={`${styles.navButton} ${styles.previous}`}
+            type="button"
+            aria-label="Show previous project"
+            aria-controls="featured-project"
+            onClick={() => onChangeProject(-1)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M19 12H5m7 7-7-7 7-7" />
+            </svg>
+          </button>
+          <span className={styles.projectPosition} aria-live="polite" aria-atomic="true">
+            {String(activeProjectIndex + 1).padStart(2, "0")} / {String(projectCount).padStart(2, "0")}
+            <span className={styles.screenReaderOnly}>: {project.title}</span>
+          </span>
+          <button
+            className={`${styles.navButton} ${styles.next}`}
+            type="button"
+            aria-label="Show next project"
+            aria-controls="featured-project"
+            onClick={() => onChangeProject(1)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14m-7-7 7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.projectDetails}>
+        <div className={styles.workOverview}>
+          <div className={styles.workCopy}>
+            <div className={styles.workDescription}>
+              <h3 className={styles.workTitle} id="featured-project-title">{project.title}</h3>
+              <p className={styles.workSummary}>{project.summary}</p>
+              <ul className={styles.projectTags} aria-label={`${project.title} project areas`}>
+                {project.tags.map((tag) => (
+                  <li key={tag}>{tag}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <Link
+            className={styles.externalLink}
+            href={projectHref}
+            target={caseStudyHref ? undefined : "_blank"}
+            rel={caseStudyHref ? undefined : "noopener noreferrer"}
+            aria-label={
+              caseStudyHref
+                ? `Learn more about the ${project.title} case study`
+                : `View ${project.title} on Behance`
+            }
+          >
+            <Image src="/Case study link.svg" alt="" width={64} height={64} />
+          </Link>
+        </div>
+
+        <div className={styles.caseStudyDetails}>
+          {project.details.map(({ label, text }) => (
+            <div className={styles.caseStudyColumn} key={label}>
+              <h4 className={styles.caseStudyLabel}>{label}</h4>
+              <p className={styles.caseStudyText}>{text}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.caseStudyActions}>
+          {caseStudyHref ? (
+            <PortfolioActionButton to={caseStudyHref} label="Learn case study" />
+          ) : (
+            <PortfolioActionButton to={projectHref} label="Learn case study" target="_blank" />
+          )}
+          <span className={styles.divider} aria-hidden="true" />
+          <a
+            className={styles.behanceLink}
+            href={behanceHref ?? "https://www.behance.net/"}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={behanceHref ? `View ${project.title} on Behance` : "View my Behance profile"}
+          >
+            Bē
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomeWorkSection() {
   const [featuredRef, featuredInView] = useInView<HTMLElement>();
   const [projectPickerRef, projectPickerInView] = useInView<HTMLDivElement>();
@@ -187,6 +282,9 @@ export default function HomeWorkSection() {
   const [pickerScrollProgress, setPickerScrollProgress] = useState(0);
   const [pickerHasOverflow, setPickerHasOverflow] = useState(false);
   const activeProject = featuredProjects[activeProjectIndex];
+  const caseStudyHref = "caseStudyHref" in activeProject ? activeProject.caseStudyHref : undefined;
+  const behanceHref = "behanceHref" in activeProject ? activeProject.behanceHref : undefined;
+  const projectHref = caseStudyHref ?? behanceHref ?? "https://www.behance.net/";
 
   const updatePickerScroll = useCallback((picker: HTMLDivElement) => {
     const maxScroll = Math.max(0, picker.scrollWidth - picker.clientWidth);
@@ -245,98 +343,33 @@ export default function HomeWorkSection() {
           className={`${styles.featuredWork} ${featuredInView ? styles.inView : ""}`}
         >
           <Link
-            key={`${activeProject.id}-visual`}
             className={styles.featuredVisual}
-            href={activeProject.href}
-            aria-label={`Open the ${activeProject.title} case study`}
+            href={projectHref}
+            target={caseStudyHref ? undefined : "_blank"}
+            rel={caseStudyHref ? undefined : "noopener noreferrer"}
+            aria-label={
+              caseStudyHref
+                ? `Open the ${activeProject.title} case study`
+                : `View ${activeProject.title} on Behance`
+            }
           >
             <span className={styles.featuredBacking} aria-hidden="true" />
-            <span className={styles.featuredArtwork} key={`${activeProject.id}-artwork`}>
+            <span className={styles.featuredArtwork}>
               <ProjectArtwork project={activeProject} />
             </span>
             <span className={styles.featuredAccent} aria-hidden="true" />
             <span className={styles.featuredSparkle} aria-hidden="true">✦</span>
           </Link>
 
-          <div className={styles.workDetails}>
-            <div className={styles.workMeta}>
-              <p className={styles.workCategory}>{activeProject.category}</p>
-              <div className={styles.projectNavigation} role="group" aria-label="Featured project navigation">
-                <button
-                  className={`${styles.navButton} ${styles.previous}`}
-                  type="button"
-                  aria-label="Show previous project"
-                  aria-controls="featured-project"
-                  onClick={() => changeProject(-1)}
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M19 12H5m7 7-7-7 7-7" />
-                  </svg>
-                </button>
-                <span className={styles.projectPosition} aria-live="polite" aria-atomic="true">
-                  {String(activeProjectIndex + 1).padStart(2, "0")} / {String(featuredProjects.length).padStart(2, "0")}
-                  <span className={styles.screenReaderOnly}>: {activeProject.title}</span>
-                </span>
-                <button
-                  className={`${styles.navButton} ${styles.next}`}
-                  type="button"
-                  aria-label="Show next project"
-                  aria-controls="featured-project"
-                  onClick={() => changeProject(1)}
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 12h14m-7-7 7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.projectDetails} key={`${activeProject.id}-details`}>
-              <div className={styles.workOverview}>
-                <div className={styles.workCopy}>
-                  <div className={styles.workDescription}>
-                    <h3 className={styles.workTitle} id="featured-project-title">{activeProject.title}</h3>
-                    <p className={styles.workSummary}>{activeProject.summary}</p>
-                  </div>
-                </div>
-                <Link
-                  className={styles.externalLink}
-                  href={activeProject.href}
-                  aria-label={`Learn more about the ${activeProject.title} case study`}
-                >
-                  <Image
-                    src="/Case study link.svg"
-                    alt=""
-                    width={64}
-                    height={64}
-                  />
-                </Link>
-              </div>
-
-              <div className={styles.caseStudyDetails}>
-                {activeProject.details.map(({ label, text }) => (
-                  <div className={styles.caseStudyColumn} key={label}>
-                    <h4 className={styles.caseStudyLabel}>{label}</h4>
-                    <p className={styles.caseStudyText}>{text}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.caseStudyActions}>
-                <PortfolioActionButton to={activeProject.href} label="Learn case study" />
-                <span className={styles.divider} aria-hidden="true" />
-                <a
-                  className={styles.behanceLink}
-                  href="https://www.behance.net/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="View my Behance profile"
-                >
-                  Bē
-                </a>
-              </div>
-            </div>
-          </div>
+          <FeaturedProjectDetails
+            project={activeProject}
+            activeProjectIndex={activeProjectIndex}
+            projectCount={featuredProjects.length}
+            caseStudyHref={caseStudyHref}
+            behanceHref={behanceHref}
+            projectHref={projectHref}
+            onChangeProject={changeProject}
+          />
         </article>
         <div className={styles.projectPickerGroup}>
           <div
@@ -360,7 +393,7 @@ export default function HomeWorkSection() {
                   onClick={() => setActiveProjectIndex(index)}
                   key={project.id}
                 >
-                  <span className={styles.projectCardYear}>{project.year}</span>
+                  {project.year && <span className={styles.projectCardYear}>{project.year}</span>}
                   <span className={styles.projectCardVisual}>
                     <ProjectArtwork project={project} compact />
                     <span className={styles.projectCardDot} aria-hidden="true" />

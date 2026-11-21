@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { SiteNav } from "@/components/Navigation/SiteNav";
 import ContactAndFooter from "./ContactAndFooter";
 import { PortfolioActionButton } from "./PortfolioActionButton";
@@ -47,6 +49,18 @@ export function Tag({
     >
       {children}
     </span>
+  );
+}
+
+export function BackToWorkLink({ label }: { label: string }) {
+  return (
+    <Link
+      href="/#work"
+      className="inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-ink"
+    >
+      <Image src="/back%20arrow%20for%20work.svg" alt="" width={16} height={16} />
+      {label}
+    </Link>
   );
 }
 

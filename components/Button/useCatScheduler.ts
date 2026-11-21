@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { CATS, IDLE_CATS, type CatKey, type IdleCatKey } from "./buttonCats";
+import { playCatCue } from "@/lib/audio/portfolioAudio";
 
 export type CatPhase = "play" | "rx" | "fl";
 
@@ -106,6 +107,7 @@ export function useCatScheduler({ enabled, paused = false, rootRef, timing = DEF
     };
     const play = (key: CatKey, duration: number) => {
       set({ id: ++counter, key, duration, seed: Math.random() * 5, phase: "play" });
+      playCatCue("appear");
       const idle = key !== "surp" && key !== "atk";
       if (idle && holding) {
         remaining = duration; // cat appears under the cursor: stay until the hover is gone
@@ -139,6 +141,7 @@ export function useCatScheduler({ enabled, paused = false, rootRef, timing = DEF
     // click on a visible cat: react first, then leave (never just vanish)
     reactRef.current = () => {
       if (!cur || cur.phase !== "play" || cur.key === "surp" || cur.key === "atk") return;
+      playCatCue("react");
       if (cur.key === "peek") return play("surp", CATS.surp.duration ?? 1400);
       if (cur.key === "sleep") return play("atk", CATS.atk.duration ?? 3400);
       pause(); // keep the remaining time; react, then stay (hovering) or leave

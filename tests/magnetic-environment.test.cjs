@@ -977,12 +977,15 @@ test("the homepage default is editable and isolated from About and Opening scene
   assert.equal(opening.lines.length, 0);
 });
 
-test("page defaults keep Home and Work aligned and leave special pages clear", () => {
-  const home = getPortfolioDefaultScene("/");
+test("project detail page defaults are clear and special pages remain clear", () => {
   const empty = getPortfolioDefaultScene("/not-found");
 
-  assert.deepEqual(getPortfolioDefaultScene("/work/em-collection"), home);
-  assert.deepEqual(getPortfolioDefaultScene("/work/codynn"), home);
+  for (const path of ["/work/em-collection", "/work/xfog-of-war", "/work/irevise"]) {
+    const projectScene = getPortfolioDefaultScene(path);
+    assert.equal(projectScene.lines.length, 0);
+    assert.equal(projectScene.groups.length, 0);
+    assert.equal(projectScene.targets.length, 0);
+  }
   assert.equal(getPortfolioDefaultScene("/opening").lines.length, 0);
   assert.equal(empty.lines.length, 0);
   assert.equal(getPortfolioDefaultScene("/404").lines.length, 0);
@@ -991,9 +994,10 @@ test("page defaults keep Home and Work aligned and leave special pages clear", (
   assert.equal(sanitizeSceneConfig({}).lines.length, DEFAULT_SCENE.lines.length);
 
   const savedWorkStarter = sanitizeSceneConfig(DEFAULT_STARTER_SCENE);
+  const workDefault = getPortfolioDefaultScene("/work/em-collection");
   assert.strictEqual(
-    normalizePortfolioPageScene("/work/em-collection", savedWorkStarter, home),
-    home,
+    normalizePortfolioPageScene("/work/em-collection", savedWorkStarter, workDefault),
+    workDefault,
   );
   const savedStarter = sanitizeSceneConfig(DEFAULT_STARTER_SCENE);
   assert.strictEqual(normalizePortfolioPageScene("/not-found", savedStarter, empty), empty);
@@ -1103,6 +1107,7 @@ test("project page scenes are populated from the project-scene API cache", () =>
   assert.equal(home.lines[0].flow.effectType, "energy-pulse");
   assert.equal(home.lines[0].flow.speed, 0.12);
   assert.equal(projectScenes["/opening"].lines.length, 0);
+  assert.equal(projectScenes["/work/em-collection"].lines.length, 0);
   replaceProjectPageScenes({ "/": home });
   const cachedHome = getProjectPageScene("/");
   assert.ok(cachedHome);
