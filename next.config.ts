@@ -1,3 +1,4 @@
+
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -6,12 +7,6 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: "www.dipakpahari.com.np" }],
-        destination: "https://dipakpahari.com.np/:path*",
-        permanent: true,
-      },
       { source: "/irevise", destination: "/work/irevise", permanent: true },
       { source: "/codynn", destination: "/work/codynn", permanent: true },
       { source: "/savvy", destination: "/work/em-collection", permanent: true },
