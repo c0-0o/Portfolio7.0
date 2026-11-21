@@ -70,6 +70,38 @@ const sketchbook = [
   { title: "Nothing", src: "/playground/nothing.webp", aspect: "1300 / 1600", year: "2021" },
 ] as const;
 
+function PixelHumanCard({
+  onOpen,
+}: {
+  onOpen: (src: string, title: string) => void;
+}) {
+  const src = "/playground/aseprite1/P001-human-loop.webp";
+
+  return (
+    <figure className="group">
+      <button
+        type="button"
+        aria-label="Open human pixel animation in full screen"
+        className="relative grid aspect-4/5 w-full cursor-zoom-in place-items-center overflow-hidden bg-[#dfe2d8]"
+        onClick={() => onOpen(src, "Human — pixel animation")}
+      >
+        <Image
+          src={src}
+          alt="Human pixel artwork animation"
+          fill
+          sizes="(min-width: 768px) 33vw, 100vw"
+          unoptimized
+          className="object-contain p-10 [image-rendering:pixelated]"
+        />
+      </button>
+      <figcaption className="mt-3 flex items-center justify-between gap-3 text-[13px] font-medium md:text-[15px]">
+        <span>Human — pixel animation</span>
+        <span className="text-[9px] tracking-[0.12em] text-muted md:text-[10px]">2026</span>
+      </figcaption>
+    </figure>
+  );
+}
+
 function FeaturedCard({
   piece,
   index,
@@ -180,6 +212,42 @@ export default function PlaygroundRoute() {
           {featuredSequences.map((piece, index) => (
             <FeaturedCard key={piece.title} piece={piece} index={index} onOpen={(src, title) => setLightbox({ src, title })} />
           ))}
+        </div>
+
+        <div className="mt-4 border-t border-line pt-5">
+          <div className="mb-7 flex items-center justify-between">
+            <h2 className="text-[27px] leading-none md:text-[38px]">Pixel studies</h2>
+            <span className="text-[10px] tracking-[0.12em] text-muted uppercase">Aseprite · 2026</span>
+          </div>
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+            <PixelHumanCard onOpen={(src, title) => setLightbox({ src, title })} />
+            {[
+              { title: "Mage", src: "/playground/aseprite2/Sprite-0001-scaled.webp", year: "2026" },
+              { title: "Collecting fire", src: "/playground/aseprite2/Sprite-0002-scaled.webp", year: "2026" },
+            ].map((piece) => (
+              <figure key={piece.title} className="group">
+                <button
+                  type="button"
+                  aria-label={`Open ${piece.title} pixel artwork in full screen`}
+                  className="relative grid aspect-4/5 w-full cursor-zoom-in place-items-center overflow-hidden bg-[#dfe2d8]"
+                  onClick={() => setLightbox({ src: piece.src, title: piece.title })}
+                >
+                  <Image
+                    src={piece.src}
+                    alt={piece.title}
+                    fill
+                    sizes="(min-width: 768px) 33vw, 100vw"
+                    unoptimized
+                    className="object-contain p-10 [image-rendering:pixelated]"
+                  />
+                </button>
+                <figcaption className="mt-3 flex items-center justify-between gap-3 text-[13px] font-medium md:text-[15px]">
+                  <span>{piece.title}</span>
+                  <span className="text-[9px] tracking-[0.12em] text-muted md:text-[10px]">{piece.year}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
         </div>
 
         <div className="mt-10 border-t border-line pt-5">

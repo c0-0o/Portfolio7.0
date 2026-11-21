@@ -6,7 +6,7 @@ import { motion, useInView, useReducedMotion, type Variants } from "framer-motio
 import { useRef } from "react";
 import { PillButton, SectionLabel, Tag } from "./site";
 
-const PORTRAIT = "/idneittycard2.jpeg";
+const PORTRAIT = "/identity/identity-card-alternate.jpeg";
 
 const expertise = [
   {
@@ -204,7 +204,7 @@ export default function HomeAnimatedSections() {
             <div className="absolute top-12 left-3 h-73.5 w-69 rotate-[7deg] overflow-hidden rounded-xl md:rounded-[20px]">
               <Image
                 src={PORTRAIT}
-                alt=""
+                alt="Dipak Pahari, UI/UX designer"
                 fill
                 sizes="(min-width: 768px) 276px, 276px"
                 className="object-cover object-[66%_center] transition-transform duration-500 group-hover:scale-105"

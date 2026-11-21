@@ -52,13 +52,23 @@ export function Tag({
   );
 }
 
-export function BackToWorkLink({ label }: { label: string }) {
+export function BackToWorkLink({ label, dark = false }: { label: string; dark?: boolean }) {
   return (
     <Link
       href="/#work"
-      className="inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-ink"
+      className={`group inline-flex items-center gap-2 text-sm transition-colors ${
+        dark ? "text-soft hover:text-lime" : "text-muted hover:text-ink"
+      }`}
     >
-      <Image src="/back%20arrow%20for%20work.svg" alt="" width={16} height={16} />
+      <Image
+        src="/back%20arrow%20for%20work.svg"
+        alt=""
+        width={16}
+        height={16}
+        className={`transition-transform duration-200 group-hover:-translate-x-1 ${
+          dark ? "brightness-0 invert opacity-80" : ""
+        }`}
+      />
       {label}
     </Link>
   );

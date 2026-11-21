@@ -22,7 +22,7 @@ const mountedCats = new WeakMap<HTMLElement, CatApi>();
 const IDLE_FIRST = [5000, 8000]; // quiet time after the pop-up / any interaction before an idle expression
 const IDLE_HOLD = [2500, 4000]; // how long one idle expression lasts
 const IDLE_GAP = [6000, 10000]; // quiet time after an idle expression before the next one
-const NAP_AFTER = 20000; // no interaction for this long -> sleep
+const NAP_AFTER = 18000; // no interaction for this long -> sleep
 const TWITCH = [6000, 12000]; // little twitch while asleep
 const PET_AFTER = 1500; // hover the head this long -> happy
 const CLICK_WINDOW = 2500; // clicks counted inside this window
@@ -43,11 +43,11 @@ export const DEF: Record<Mood, Def> = {
   love: { prio: 8, min: 2000, fade: 300 },
   starry: { prio: 7, min: 500, fade: 300 },
   wink: { prio: 6, min: 1200, fade: 200, lock: true, cd: 600 },
-  surprised: { prio: 6, min: 1000, fade: 220, lock: true }, // pop-up + wake-up
+  surprised: { prio: 6, min: 900, fade: 180, lock: true }, // pop-up + wake-up
   happy: { prio: 5, min: 900, fade: 350 },
   goofy: { prio: 4, min: 1500, fade: 250, cd: 3000 },
   bored: idleDef, mischievous: idleDef, food: idleDef,
-  sleepy: { prio: 1, min: 0, fade: 1500 }, // slow, gradual eyelid close
+  sleepy: { prio: 1, min: 0, fade: 900 }, // slow, gradual eyelid close
   neutral: { prio: 0, min: 0, fade: 350 },
 };
 
@@ -173,7 +173,13 @@ export function mountCat(o: Opts): CatApi {
   const activity = () => { // any real interaction: resets the nap timer, wakes the cat
     lastAct = now();
     idleAt = Math.max(idleAt, lastAct + IDLE_FIRST[0]); // idle expressions need >= 5s of quiet
-    if (asleep) { asleep = false; release("sleep"); request("wake", "surprised", 1200, "woke up"); }
+    if (asleep) {
+      asleep = false;
+      release("sleep");
+      blinkAt = -1;
+      request("wake", "surprised", 900, "woke up");
+      poke("squash");
+    }
   };
 
   /* gaze + little physical reactions */

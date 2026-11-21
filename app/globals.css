@@ -131,6 +131,7 @@ body > main {
   transform: translate3d(0, 0, 0);
 }
 
+
 @media (prefers-reduced-motion: reduce) {
   .scroll-reveal-pending,
   .scroll-reveal-visible {

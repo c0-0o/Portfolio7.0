@@ -148,6 +148,7 @@ export const ContactAndFooter = ({
     <div className={s.root}>
       {showContactSection && (
         <motion.section
+          id="contact"
           ref={contactRef}
           className={s.contact}
           aria-labelledby="contact-title"
@@ -228,7 +229,7 @@ export const ContactAndFooter = ({
               <Link className={s.link} href={EXPLORE.playground.href}>{EXPLORE.playground.label}</Link>
               <span className={s.sepMobile}><Sep /></span>
               <br className={s.brDesktop} />
-              <a className={s.link} href={`mailto:${EMAIL}`}>Contact</a>
+              <Link className={s.link} href="/contact">Contact</Link>
             </div>
           </motion.nav>
 

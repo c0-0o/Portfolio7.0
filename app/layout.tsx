@@ -4,6 +4,8 @@ import { CursorEffectsOverlay } from "@/lib/cursor-effects/CursorEffects";
 import { PersistentMagneticBackground } from "@/lib/magnetic-lines";
 import { SoundToggle } from "@/components/portfolio/SoundToggle";
 import { ScrollReveal } from "@/components/portfolio/ScrollReveal";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { personSchema, websiteSchema } from "@/lib/seo";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -38,6 +40,8 @@ export const metadata: Metadata = {
     template: "%s | Dipak Pahari",
   },
   applicationName: "Dipak Pahari Portfolio",
+  manifest: "/manifest.webmanifest",
+  category: "portfolio",
   description:
     "Dipak Pahari is a UX/UI designer in Nepal crafting intuitive, human-centered digital products and polished portfolio experiences.",
   authors: [{ name: "Dipak Pahari", url: "https://dipakpahari.com.np" }],
@@ -54,6 +58,7 @@ export const metadata: Metadata = {
     canonical: "https://dipakpahari.com.np",
   },
   icons: [
+    { rel: "icon", url: "/favicon.ico" },
     {
       url: "/favicon-16x16.png",
       sizes: "16x16",
@@ -100,7 +105,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "https://dipakpahari.com.np/1200%20%C3%97%20630.webp",
+        url: "https://dipakpahari.com.np/thumbnails/portfolio-og-1200x630.webp",
         width: 1200,
         height: 630,
         type: "image/webp",
@@ -112,7 +117,7 @@ export const metadata: Metadata = {
     title: "Dipak Pahari | UX/UI Designer",
     description:
       "Product design portfolio and UX/UI work by Dipak Pahari, a designer based in Nepal creating thoughtful digital experiences.",
-    images: ["https://dipakpahari.com.np/1200%20%C3%97%20630.webp"],
+    images: ["https://dipakpahari.com.np/thumbnails/portfolio-og-1200x630.webp"],
   },
 };
 
@@ -124,6 +129,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         className={`${dmSans.variable} ${geistSans.variable} ${lilitaOne.variable} ${geistMono.variable} h-full antialiased`}
       >
         <body className="min-h-full flex flex-col">
+          <JsonLd data={[personSchema(), websiteSchema()]} />
           <PersistentMagneticBackground />
           <ScrollReveal />
           {children}

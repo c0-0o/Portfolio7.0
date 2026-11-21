@@ -8,9 +8,7 @@ import {
 } from "@/lib/audio/portfolioAudio";
 
 export function SoundToggle() {
-  const [enabled, setEnabled] = useState(() =>
-    typeof window === "undefined" ? true : getInitialPortfolioSoundEnabled(),
-  );
+  const [enabled, setEnabled] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);

@@ -3,11 +3,11 @@ type CatCue = "appear" | "react";
 const PORTFOLIO_SOUND_STORAGE_KEY = "portfolio-background-sound";
 
 const MUSIC_TRACKS = [
-  "/cinematic-house-take-1.mp3",
-  "/Luminous%20Horizons.wav",
-  "/Luminous%20Horizons%20%281%29.wav",
-  "/Luminous%20Tides.wav",
-  "/Luminous%20Tides%20%281%29.wav",
+  "/audio/cinematic-house-take-1.mp3",
+  "/audio/luminous-horizons.wav",
+  "/audio/luminous-horizons-1.wav",
+  "/audio/luminous-tides.wav",
+  "/audio/luminous-tides-1.wav",
 ];
 
 let audioContext: AudioContext | null = null;

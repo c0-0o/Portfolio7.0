@@ -15,7 +15,7 @@ const NAV_LINKS = [
   { label: "Work", href: "/#work" },
   { label: "About", href: "/about" },
   { label: "Playground", href: "/playground" },
-  { label: "Contact", href: "mailto:nexgen.d.pahari@gmail.com" },
+  { label: "Contact", href: "/contact" },
 ] as const;
 const DESKTOP_LINKS = NAV_LINKS.slice(0, 3);
 const EMAIL = "nexgen.d.pahari@gmail.com";

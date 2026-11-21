@@ -16,7 +16,7 @@ const featuredProjects = [
     category: "Client Work",
     summary:
       "Ecommerce UI/UX design and full-stack development, creating a seamless shopping experience from product discovery to order completion.",
-    image: "/emcollectionthumbnail.png",
+    image: "/thumbnails/emcollection-thumbnail.png",
     unoptimized: true,
     tags: ["Ecommerce", "UI/UX Design", "FullStack Development", "Responsive Design"],
     details: [
@@ -43,7 +43,7 @@ const featuredProjects = [
     category: "Team Project",
     summary:
       "A fog-of-war chess experience with clearer rules, custom pieces and a board-first interface for desktop and mobile.",
-    image: "/Play%20now%20%E2%80%A2%20square%20card.webp",
+    image: "/thumbnails/play-now-square.webp",
     imageFit: "contain",
     thumbnailImageFit: "fill",
     tags: ["Game Design", "Chess", "UI/UX Design", "Icon Design"],
@@ -71,11 +71,11 @@ const featuredProjects = [
     category: "Client Work",
     summary:
       "A teacher-led learning platform connecting exam creation, student practice, and meaningful feedback across desktop and mobile.",
-    image: "/iRevise%20%E2%80%94%20Behance%20thumbnail.webp",
+    image: "/thumbnails/irevise-behance.webp",
     imageFit: "cover",
     thumbnailImageFit: "cover",
     imageBackground: "light",
-    featuredImage: "/iRevise%20%E2%80%94%20Behance%20thumbnail%20for%20bigger.webp",
+    featuredImage: "/thumbnails/irevise-behance-large.webp",
     unoptimized: true,
     tags: ["EdTech", "UX research", "Product design", "UI Design"],
     details: [
@@ -128,7 +128,7 @@ function ProjectArtwork({ project, compact = false }: { project: FeaturedProject
               .join(" ")
       }
       src={!compact && "featuredImage" in project ? project.featuredImage : project.image}
-      alt=""
+      alt={`${project.title} project preview`}
       fill
       unoptimized={"unoptimized" in project && project.unoptimized}
       sizes={compact ? "(max-width: 560px) 30vw, 260px" : "(max-width: 800px) 100vw, 42vw"}

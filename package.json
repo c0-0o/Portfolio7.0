@@ -6,8 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:cursor": "node --test tests/cursor-foundation.test.cjs",
-    "test:magnetic": "node --test tests/magnetic-*.test.cjs",
+    "test": "node --test tests/cursor/*.test.cjs tests/magnetic/*.test.cjs tests/ui/*.test.cjs tests/editor/*.test.cjs tests/intro/*.test.cjs",
+    "test:cursor": "node --test tests/cursor/*.test.cjs",
+    "test:magnetic": "node --test tests/magnetic/*.test.cjs",
     "lint": "eslint"
   },
   "dependencies": {

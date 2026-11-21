@@ -785,7 +785,7 @@ export default function XfogOfWarContent() {
         </div>
 
         <div className="flex flex-col gap-5 border-t border-ink-line pt-7 sm:flex-row sm:items-center sm:justify-between">
-          <BackToWorkLink label="Back to selected work" />
+          <BackToWorkLink label="Back to selected work" dark />
           <p className="text-sm leading-relaxed text-soft">
             Browser chess game / interface design / custom chess-piece artwork
           </p>
